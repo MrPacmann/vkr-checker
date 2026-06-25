@@ -19,7 +19,7 @@ export function Header({ page, hasReport, settings, onNavigate, onSettingsChange
           <span className="brand-mark">
             <FileCheck2 size={22} />
           </span>
-          <span>Проверка ВКР</span>
+          <span>Проверка оформления</span>
         </button>
         <nav className="nav-actions" aria-label="Основная навигация">
           <button className={`button ${page === "home" ? "primary" : ""}`} type="button" onClick={() => onNavigate("home")}>

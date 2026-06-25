@@ -17,7 +17,7 @@ function reportHeading(report: CheckReport): string {
   const workType = report.debug?.activeWorkType;
   if (workType === "coursework") return "Отчёт предварительной проверки курсовой работы";
   if (workType === "practiceReport") return "Отчёт предварительной проверки отчёта по практике";
-  if (workType === "bachelorThesis" || workType === "masterThesis") return "Отчёт предварительной проверки ВКР";
+  if (workType === "bachelorThesis" || workType === "masterThesis") return "Отчёт предварительной проверки документа";
   return "Отчёт предварительной проверки документа";
 }
 
