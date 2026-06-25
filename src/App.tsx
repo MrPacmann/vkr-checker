@@ -6,13 +6,15 @@ import type { VisualLayerResult } from "./types/visualLayer";
 import { Footer } from "./components/Footer";
 import { Header } from "./components/Header";
 import { CheckerPage } from "./pages/CheckerPage";
+import { HelpPage } from "./pages/HelpPage";
 import { HomePage } from "./pages/HomePage";
 import { ReportPage } from "./pages/ReportPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { UpdatesPage } from "./pages/UpdatesPage";
 import { getActiveProfile, resolveProfileForWorkType } from "./services/settings/profileManager";
 import { loadSettings, saveSettings } from "./services/settings/settingsStorage";
 
-export type AppPage = "home" | "checker" | "settings" | "report";
+export type AppPage = "home" | "checker" | "settings" | "report" | "help" | "updates";
 
 export interface CompletedCheckState {
   report: CheckReport;
@@ -43,6 +45,8 @@ export default function App() {
       <main className="main-shell">
         {page === "home" && <HomePage onNavigate={setPage} />}
         {page === "checker" && <CheckerPage settings={settings} onSettingsChange={setSettings} activeProfile={activeProfile} onComplete={goToReport} />}
+        {page === "help" && <HelpPage />}
+        {page === "updates" && <UpdatesPage />}
         {page === "settings" && <SettingsPage settings={settings} onSettingsChange={setSettings} />}
         {page === "report" && completedCheck && <ReportPage result={completedCheck} onNavigate={setPage} />}
         {page === "report" && !completedCheck && <CheckerPage settings={settings} onSettingsChange={setSettings} activeProfile={activeProfile} onComplete={goToReport} />}

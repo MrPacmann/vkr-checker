@@ -1,4 +1,4 @@
-import { Clipboard, Download, FileJson2, Printer, RotateCcw } from "lucide-react";
+import { Clipboard, Download, FileJson2, FileText, Printer, RotateCcw } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { AppPage, CompletedCheckState } from "../App";
 import { CheckSummary } from "../components/CheckSummary";
@@ -7,8 +7,10 @@ import { IssueFilters, type IssueFilterState } from "../components/IssueFilters"
 import { IssueList } from "../components/IssueList";
 import { exportReportHtml } from "../services/reportExporter/exportHtml";
 import { exportReportJson } from "../services/reportExporter/exportJson";
+import { exportReportMarkdown } from "../services/reportExporter/exportMarkdown";
 import { buildShortReportText, printReport } from "../services/reportExporter/printReport";
 import type { WorkType } from "../types/settings";
+import { buildReportSummary, groupIssues } from "../utils/reportPresentation";
 
 interface ReportPageProps {
   result: CompletedCheckState;
@@ -30,14 +32,23 @@ const workTypeLabels: Record<WorkType, string> = {
   generic: "универсальная учебная работа"
 };
 
+function isTechnicalDiagnosticIssue(code: string): boolean {
+  const normalizedCode = code.toUpperCase();
+  return normalizedCode.includes("DEBUG") || normalizedCode.includes("DIAGNOSTIC") || normalizedCode.includes("PARSER_TRACE");
+}
+
 export function ReportPage({ result, onNavigate }: ReportPageProps) {
   const { report, document, visualLayer } = result;
   const [filters, setFilters] = useState<IssueFilterState>(initialFilters);
+  const [importantOnly, setImportantOnly] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [manualCopyText, setManualCopyText] = useState<string | null>(null);
+  const summary = useMemo(() => buildReportSummary(report), [report]);
 
   const filteredIssues = useMemo(() => {
     const query = filters.query.trim().toLowerCase();
-    return report.issues.filter((issue) => {
+    const baseIssues = importantOnly ? report.issues.filter((issue) => ["critical", "error", "warning"].includes(issue.level) && !isTechnicalDiagnosticIssue(issue.code)) : report.issues;
+    return baseIssues.filter((issue) => {
       if (filters.level !== "all" && issue.level !== filters.level) return false;
       if (filters.category !== "all" && issue.category !== filters.category) return false;
       if (filters.confidence === "manual" && issue.confidence !== "unknown") return false;
@@ -45,12 +56,21 @@ export function ReportPage({ result, onNavigate }: ReportPageProps) {
       if (!query) return true;
       return [issue.message, issue.code, issue.category, issue.excerpt, issue.recommendation, issue.location.section].filter(Boolean).join(" ").toLowerCase().includes(query);
     });
-  }, [filters, report.issues]);
+  }, [filters, importantOnly, report.issues]);
+
+  const visibleIssues = useMemo(() => groupIssues(filteredIssues), [filteredIssues]);
 
   const copyShortReport = async () => {
-    await navigator.clipboard.writeText(buildShortReportText(report));
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1800);
+    const text = buildShortReportText(report);
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error("Clipboard API недоступен.");
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setManualCopyText(null);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      setManualCopyText(text);
+    }
   };
 
   const stats = [
@@ -92,11 +112,14 @@ export function ReportPage({ result, onNavigate }: ReportPageProps) {
           <button className="button" type="button" onClick={() => exportReportHtml(report)}>
             <Download size={18} /> Экспорт HTML
           </button>
-          <button className="button" type="button" onClick={() => printReport(report)}>
-            <Printer size={18} /> Печать
+          <button className="button" type="button" onClick={() => exportReportMarkdown(report)}>
+            <FileText size={18} /> Скачать Markdown
+          </button>
+          <button className="button" type="button" onClick={() => printReport(report)} title="В окне печати выберите «Сохранить как PDF»">
+            <Printer size={18} /> Скачать PDF / Печать
           </button>
           <button className="button" type="button" onClick={copyShortReport}>
-            <Clipboard size={18} /> {copied ? "Скопировано" : "Краткий отчет"}
+            <Clipboard size={18} /> {copied ? "Краткий отчёт скопирован" : "Скопировать краткий отчёт"}
           </button>
           <button className="button" type="button" onClick={() => onNavigate("checker")}>
             <RotateCcw size={18} /> Загрузить другой файл
@@ -105,6 +128,30 @@ export function ReportPage({ result, onNavigate }: ReportPageProps) {
       </section>
 
       <CheckSummary report={report} />
+
+      <section className="tool-panel">
+        <h2>Краткое резюме</h2>
+        <p>{summary.statusText}</p>
+        {summary.topIssues.length > 0 && (
+          <>
+            <h3>Основные замечания</h3>
+            <ol className="compact-list">
+              {summary.topIssues.map((issue, index) => (
+                <li key={`${issue}-${index}`}>{issue}</li>
+              ))}
+            </ol>
+          </>
+        )}
+        <p className="muted">В окне печати выберите «Сохранить как PDF», если нужен PDF-файл отчёта.</p>
+      </section>
+
+      {manualCopyText && (
+        <section className="tool-panel">
+          <h2>Краткий отчёт для ручного копирования</h2>
+          <p className="muted">Буфер обмена недоступен в этом браузере или режиме. Выделите текст и скопируйте его вручную.</p>
+          <textarea className="textarea code-textarea" readOnly value={manualCopyText} />
+        </section>
+      )}
 
       {report.inputMode === "pdfOnly" && (
         <section className="tool-panel">
@@ -216,8 +263,22 @@ export function ReportPage({ result, onNavigate }: ReportPageProps) {
 
       <div className="report-layout">
         <div className="grid">
+          <section className="tool-panel">
+            <h2>Замечания</h2>
+            <div className="toolbar">
+              <button className={`button ${importantOnly ? "primary" : ""}`} type="button" onClick={() => setImportantOnly(true)}>
+                Показать только важное
+              </button>
+              <button className={`button ${!importantOnly ? "primary" : ""}`} type="button" onClick={() => setImportantOnly(false)}>
+                Показать всё
+              </button>
+            </div>
+            <p className="muted" style={{ marginBottom: 0 }}>
+              Показано {visibleIssues.length} карточек из {filteredIssues.length} замечаний после фильтров. Однотипные замечания группируются, исходные данные отчёта не изменяются.
+            </p>
+          </section>
           <IssueFilters value={filters} onChange={setFilters} />
-          <IssueList issues={filteredIssues} />
+          <IssueList issues={visibleIssues} />
         </div>
         <div className="grid">
           <DocumentPreview visualLayer={visualLayer} />

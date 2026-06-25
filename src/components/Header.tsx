@@ -1,4 +1,4 @@
-import { FileCheck2, Moon, Settings, Sun, UploadCloud, Home, BarChart3 } from "lucide-react";
+import { BarChart3, BookOpen, FileCheck2, History, Home, Moon, Settings, Sun, UploadCloud } from "lucide-react";
 import type { AppPage } from "../App";
 import type { AppSettings } from "../types/settings";
 
@@ -30,6 +30,12 @@ export function Header({ page, hasReport, settings, onNavigate, onSettingsChange
           </button>
           <button className={`button ${page === "settings" ? "primary" : ""}`} type="button" onClick={() => onNavigate("settings")}>
             <Settings size={18} /> Настройки
+          </button>
+          <button className={`button ${page === "help" ? "primary" : ""}`} type="button" onClick={() => onNavigate("help")}>
+            <BookOpen size={18} /> Как исправить
+          </button>
+          <button className={`button ${page === "updates" ? "primary" : ""}`} type="button" onClick={() => onNavigate("updates")}>
+            <History size={18} /> Обновления
           </button>
           <button className={`button ${page === "report" ? "primary" : ""}`} type="button" onClick={() => onNavigate("report")} disabled={!hasReport}>
             <BarChart3 size={18} /> Отчет

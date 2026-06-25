@@ -62,7 +62,26 @@ export function HomePage({ onNavigate }: HomePageProps) {
         </div>
       </section>
 
-      <PrivacyNotice />
+      <section className="grid two">
+        <div className="tool-panel instruction-block">
+          <h2>Как пользоваться проверкой</h2>
+          <ol className="compact-list">
+            <li>Загрузите файл DOCX.</li>
+            <li>При наличии загрузите PDF, экспортированный из этого же DOCX.</li>
+            <li>Выберите профиль проверки и тип работы.</li>
+            <li>Нажмите «Проверить».</li>
+            <li>Посмотрите список замечаний.</li>
+            <li>Скачайте или скопируйте краткий отчёт.</li>
+          </ol>
+          <p className="muted">
+            DOCX является основным источником для проверки структуры и оформления. PDF нужен дополнительно для более точной привязки к страницам и визуальной проверки.
+          </p>
+          <p className="muted">
+            Если загружен только PDF, часть проверок будет недоступна. Такие проверки попадают в раздел «Недоступные проверки», а не считаются ошибками.
+          </p>
+        </div>
+        <PrivacyNotice />
+      </section>
 
       <section className="grid three">
         <div className="panel">

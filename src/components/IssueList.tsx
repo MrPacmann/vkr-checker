@@ -1,8 +1,11 @@
 import type { CheckIssue } from "../types/report";
+import { GroupedIssueCard } from "./GroupedIssueCard";
 import { IssueCard } from "./IssueCard";
+import type { ReportIssueItem } from "../utils/reportPresentation";
+import { isGroupedIssue } from "../utils/reportPresentation";
 
 interface IssueListProps {
-  issues: CheckIssue[];
+  issues: ReportIssueItem[];
 }
 
 export function IssueList({ issues }: IssueListProps) {
@@ -17,7 +20,7 @@ export function IssueList({ issues }: IssueListProps) {
   return (
     <section className="issue-list">
       {issues.map((issue) => (
-        <IssueCard issue={issue} key={issue.id} />
+        isGroupedIssue(issue) ? <GroupedIssueCard group={issue} key={issue.key} /> : <IssueCard issue={issue as CheckIssue} key={issue.id} />
       ))}
     </section>
   );

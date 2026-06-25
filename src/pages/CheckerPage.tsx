@@ -304,17 +304,35 @@ export function CheckerPage({ settings, onSettingsChange, activeProfile, onCompl
           {error && <p className="pill error" style={{ marginTop: 14 }}>{error}</p>}
         </section>
 
-        <aside className="tool-panel">
-          <h2>Ход проверки</h2>
-          <CheckProgress currentStage={stage} running={running} />
-          {progressMessage && <p className="pill info" style={{ marginTop: 12 }}>{progressMessage}</p>}
-          <div style={{ marginTop: 18 }}>
-            <VisualLayerStatus visualLayer={visualLayer} />
-          </div>
+        <aside className="grid">
+          <section className="tool-panel instruction-block">
+            <h2>Как пользоваться проверкой</h2>
+            <ol className="compact-list">
+              <li>Загрузите файл DOCX.</li>
+              <li>При наличии загрузите PDF, экспортированный из этого же DOCX.</li>
+              <li>Выберите профиль проверки и тип работы.</li>
+              <li>Нажмите «Проверить».</li>
+              <li>Посмотрите список замечаний.</li>
+              <li>Скачайте или скопируйте краткий отчёт.</li>
+            </ol>
+            <p className="muted">
+              DOCX является основным источником для проверки структуры и оформления. PDF нужен дополнительно для более точной привязки к страницам и визуальной проверки.
+            </p>
+            <p className="muted">
+              Если загружен только PDF, часть проверок будет недоступна. Такие проверки попадают в раздел «Недоступные проверки», а не считаются ошибками.
+            </p>
+          </section>
+          <PrivacyNotice />
+          <section className="tool-panel">
+            <h2>Ход проверки</h2>
+            <CheckProgress currentStage={stage} running={running} />
+            {progressMessage && <p className="pill info" style={{ marginTop: 12 }}>{progressMessage}</p>}
+            <div style={{ marginTop: 18 }}>
+              <VisualLayerStatus visualLayer={visualLayer} />
+            </div>
+          </section>
         </aside>
       </div>
-
-      <PrivacyNotice />
 
       <section className="tool-panel">
         <h2>Демо-документы</h2>

@@ -1,4 +1,5 @@
 import type { CheckReport } from "../../types/report";
+import { buildShortReportText } from "../../utils/reportPresentation";
 import { buildReportHtml } from "./exportHtml";
 
 export function printReport(report: CheckReport): void {
@@ -14,15 +15,4 @@ export function printReport(report: CheckReport): void {
   win.print();
 }
 
-export function buildShortReportText(report: CheckReport): string {
-  return [
-    `Проверка ВКР: ${report.fileName}`,
-    `Режим: ${report.inputMode}`,
-    `Профиль: ${report.profileName}`,
-    `Соответствие: ${report.score}%`,
-    `Надёжность score: ${report.scoreReliability ?? "не определена"}`,
-    `Критические: ${report.stats.critical}, ошибки: ${report.stats.errors}, предупреждения: ${report.stats.warnings}, информация: ${report.stats.info}`,
-    `Визуальный слой: ${report.visualLayerMode}`,
-    `Сформировано: ${new Date(report.generatedAt).toLocaleString("ru-RU")}`
-  ].join("\n");
-}
+export { buildShortReportText };

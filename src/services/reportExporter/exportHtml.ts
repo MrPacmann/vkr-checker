@@ -1,6 +1,7 @@
 import type { CheckReport } from "../../types/report";
 import { confidenceLabel } from "../../utils/confidence";
 import { downloadBlob } from "../../utils/file";
+import { buildReportSummary, isGroupedIssue } from "../../utils/reportPresentation";
 import { escapeHtml } from "../../utils/regex";
 import type { WorkType } from "../../types/settings";
 
@@ -21,9 +22,31 @@ function reportHeading(report: CheckReport): string {
 }
 
 export function buildReportHtml(report: CheckReport): string {
-  const rows = report.issues
-    .map(
-      (issue) => `<article class="issue ${issue.level}">
+  const summary = buildReportSummary(report);
+  const summaryItems = summary.topIssues.map((issue) => `<li>${escapeHtml(issue)}</li>`).join("");
+  const rows = summary.groupedIssues
+    .map((item) => {
+      if (isGroupedIssue(item)) {
+        const occurrences = item.occurrences
+          .map(
+            (issue) => `<li>
+              ${escapeHtml(issue.message)}
+              <span class="meta"> · ${escapeHtml(issue.location.section ?? "раздел не определен")}, абзац ${
+                issue.location.paragraphIndex !== undefined ? issue.location.paragraphIndex + 1 : "?"
+              }, страница ${issue.location.page ?? issue.location.estimatedPage ?? "?"}</span>
+            </li>`
+          )
+          .join("");
+        return `<article class="issue ${item.level}">
+          <div class="meta">${escapeHtml(item.level)} · ${escapeHtml(item.category ?? "")} · ${escapeHtml(item.code)} · сгруппировано</div>
+          <h2>${escapeHtml(item.message)}</h2>
+          <p><strong>Количество:</strong> ${item.count}</p>
+          <p><strong>Рекомендация:</strong> ${escapeHtml(item.representative.recommendation)}</p>
+          <details><summary>Показать места</summary><ul>${occurrences}</ul></details>
+        </article>`;
+      }
+      const issue = item;
+      return `<article class="issue ${issue.level}">
         <div class="meta">${escapeHtml(issue.level)} · ${escapeHtml(issue.category)} · ${escapeHtml(issue.code)} · ${escapeHtml(confidenceLabel(issue.confidence))}</div>
         <h2>${escapeHtml(issue.message)}</h2>
         <p><strong>Где:</strong> ${escapeHtml(issue.location.section ?? "раздел не определен")}, абзац ${issue.location.paragraphIndex !== undefined ? issue.location.paragraphIndex + 1 : "?"}, страница ${
@@ -32,8 +55,8 @@ export function buildReportHtml(report: CheckReport): string {
         ${issue.excerpt ? `<p><strong>Фрагмент:</strong> ${escapeHtml(issue.excerpt)}</p>` : ""}
         <p><strong>Рекомендация:</strong> ${escapeHtml(issue.recommendation)}</p>
         <p><strong>Источник:</strong> ${escapeHtml(issue.source)} · <strong>Профиль:</strong> ${escapeHtml(issue.ruleProfile)}</p>
-      </article>`
-    )
+      </article>`;
+    })
     .join("");
   const notAvailable = report.notAvailableChecks
     .map(
@@ -128,6 +151,12 @@ export function buildReportHtml(report: CheckReport): string {
       <div class="metric"><span>Слов</span><strong>${report.stats.words}</strong></div>
     </div>
     <p>${escapeHtml(report.scoreExplanation)}</p>
+  </section>
+  <section class="summary">
+    <h2>Краткое резюме</h2>
+    <p>${escapeHtml(summary.statusText)}</p>
+    ${summaryItems ? `<h2>Основные замечания</h2><ol>${summaryItems}</ol>` : ""}
+    <p class="meta">Проверка предварительная и не заменяет ручной нормоконтроль.</p>
   </section>
   ${
     report.inputMode === "pdfOnly"
