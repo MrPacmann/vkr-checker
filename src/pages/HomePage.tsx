@@ -1,5 +1,6 @@
 import { ArrowRight, ClipboardCheck, FileSearch, Lock, Settings } from "lucide-react";
 import type { AppPage } from "../App";
+import { FeedbackNotice } from "../components/FeedbackNotice";
 import { PrivacyNotice } from "../components/PrivacyNotice";
 
 interface HomePageProps {
@@ -62,7 +63,7 @@ export function HomePage({ onNavigate }: HomePageProps) {
         </div>
       </section>
 
-      <section className="grid two">
+      <section className="grid three">
         <div className="tool-panel instruction-block">
           <h2>Как пользоваться проверкой</h2>
           <ol className="compact-list">
@@ -81,6 +82,7 @@ export function HomePage({ onNavigate }: HomePageProps) {
           </p>
         </div>
         <PrivacyNotice />
+        <FeedbackNotice />
       </section>
 
       <section className="grid three">

@@ -135,6 +135,7 @@ button {
   color: var(--text);
   padding: 0 14px;
   cursor: pointer;
+  text-decoration: none;
   transition: 0.18s ease;
 }
 
@@ -258,6 +259,14 @@ p {
 .notice svg {
   flex: 0 0 auto;
   color: var(--primary);
+}
+
+.feedback-notice p {
+  margin: 8px 0;
+}
+
+.feedback-notice .button {
+  margin-top: 6px;
 }
 
 .debug-summary {
@@ -761,6 +770,23 @@ p {
   justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
+}
+
+.footer-author {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.footer-link {
+  color: var(--primary);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.footer-link:hover {
+  text-decoration: underline;
 }
 
 @media (max-width: 920px) {
