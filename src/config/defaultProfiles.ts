@@ -32,6 +32,10 @@ const baseProfile: RuleProfile = {
   id: "gost-732-2017",
   name: "ГОСТ 7.32-2017",
   description: "Базовый профиль проверки ВКР по ГОСТ 7.32-2017",
+  profileOrigin: "built-in",
+  isLocked: true,
+  isDefault: false,
+  lockedDefault: true,
   requiredSections: ["РЕФЕРАТ", "СОДЕРЖАНИЕ", "ВВЕДЕНИЕ", "ЗАКЛЮЧЕНИЕ", "СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ"],
   alternativeSectionNames: {
     РЕФЕРАТ: ["АННОТАЦИЯ"],
@@ -207,6 +211,9 @@ export const pmDepartmentNormcontrolProfile: RuleProfile = {
     version: "1.0"
   },
   lockedDefault: true,
+  profileOrigin: "built-in",
+  isLocked: true,
+  isDefault: true,
   editableCopyAllowed: true,
   workTypes: ["coursework", "practiceReport", "bachelorThesis", "masterThesis", "generic"],
   defaultWorkType: "coursework",

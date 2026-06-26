@@ -4,7 +4,17 @@ import type { AppSettings, RuleProfile, WorkType } from "../types/settings";
 import { defaultRules } from "../config/defaultRules";
 import { regexPresets } from "../config/regexPresets";
 import { downloadBlob } from "../utils/file";
-import { duplicateProfile, getActiveProfile, getVisibleProfiles, resetProfileToDefault, updateProfile } from "../services/settings/profileManager";
+import {
+  createProfileFromMain,
+  deleteProfile,
+  duplicateProfile,
+  getActiveProfile,
+  getVisibleProfiles,
+  importUserProfile,
+  isProfileDeletable,
+  resetProfileToDefault,
+  updateProfile
+} from "../services/settings/profileManager";
 import { profileFromJson, profileToJson } from "../services/settings/importExportProfile";
 import { ProfileSelector } from "./ProfileSelector";
 import { RegexEditor } from "./RegexEditor";
@@ -69,7 +79,8 @@ export function SettingsEditor({ settings, onSettingsChange }: SettingsEditorPro
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
   const [advancedError, setAdvancedError] = useState<string | null>(null);
   const [advancedDraft, setAdvancedDraft] = useState("");
-  const isLocked = Boolean(activeProfile.lockedDefault);
+  const isLocked = Boolean(activeProfile.isLocked || activeProfile.lockedDefault);
+  const canDeleteProfile = isProfileDeletable(activeProfile);
   const visibleProfiles = getVisibleProfiles(settings.profiles);
   const selectedProfileId = visibleProfiles.some((profile) => profile.id === settings.activeProfileId) ? settings.activeProfileId : activeProfile.id;
 
@@ -91,14 +102,38 @@ export function SettingsEditor({ settings, onSettingsChange }: SettingsEditorPro
     try {
       const profile = profileFromJson(await file.text());
       setImportError(null);
-      onSettingsChange({
-        ...settings,
-        profiles: [...settings.profiles.filter((item) => item.id !== profile.id), profile],
-        activeProfileId: profile.id
-      });
-    } catch (error) {
-      setImportError(error instanceof Error ? error.message : "Профиль поврежден.");
+      onSettingsChange(importUserProfile(settings, profile));
+    } catch {
+      setImportError("Не удалось импортировать профиль: неверный формат файла.");
     }
+  };
+
+  const createProfileWithName = () => {
+    const name = window.prompt("Название нового профиля", "Мой профиль");
+    if (name === null) return;
+    if (!name.trim()) {
+      setValidationMessage("Введите название профиля");
+      return;
+    }
+    onSettingsChange(createProfileFromMain(settings, name));
+  };
+
+  const cloneSelectedProfile = (profileId = activeProfile.id) => {
+    const sourceProfile = settings.profiles.find((profile) => profile.id === profileId) ?? activeProfile;
+    const name = window.prompt("Название копии профиля", `Копия: ${sourceProfile.name}`);
+    if (name === null) return;
+    if (!name.trim()) {
+      setValidationMessage("Введите название профиля");
+      return;
+    }
+    onSettingsChange(duplicateProfile(settings, profileId, name));
+  };
+
+  const deleteSelectedProfile = (profileId = activeProfile.id) => {
+    const profile = settings.profiles.find((item) => item.id === profileId);
+    if (!profile || !isProfileDeletable(profile)) return;
+    if (!window.confirm(`Удалить профиль «${profile.name}»? Это действие нельзя отменить.`)) return;
+    onSettingsChange(deleteProfile(settings, profileId));
   };
 
   const advancedRulesJson = JSON.stringify(Object.fromEntries(advancedProfileKeys.map((key) => [key, activeProfile[key]])), null, 2);
@@ -149,20 +184,30 @@ export function SettingsEditor({ settings, onSettingsChange }: SettingsEditorPro
     <div className="settings-grid">
       <aside className="settings-section">
         <h2>Профили</h2>
-        <ProfileSelector profiles={visibleProfiles} activeProfileId={selectedProfileId} onSelect={selectProfile} />
+        <ProfileSelector profiles={visibleProfiles} activeProfileId={selectedProfileId} onSelect={selectProfile} onClone={cloneSelectedProfile} onDelete={deleteSelectedProfile} />
         <div className="toolbar" style={{ marginTop: 14 }}>
-          <button className="button" type="button" onClick={() => onSettingsChange(duplicateProfile(settings, activeProfile.id))}>
-            <Copy size={18} /> Сохранить как копию
+          <button className="button primary" type="button" onClick={createProfileWithName}>
+            Создать профиль
           </button>
-          <button className="button" type="button" onClick={exportProfile}>
-            <Download size={18} /> Экспорт JSON
+          <button className="button" type="button" onClick={() => cloneSelectedProfile(activeProfile.id)}>
+            <Copy size={18} /> Создать копию
+          </button>
+          <button className="button" type="button" onClick={exportProfile} disabled={isLocked}>
+            <Download size={18} /> Экспортировать профиль
           </button>
           <button className="button" type="button" onClick={() => fileInputRef.current?.click()}>
             <Upload size={18} /> Импорт
           </button>
-          <button className="button danger" type="button" onClick={() => onSettingsChange(resetProfileToDefault(settings, activeProfile.id))}>
-            <RotateCcw size={18} /> Сбросить к требованиям
-          </button>
+          {canDeleteProfile && (
+            <>
+              <button className="button" type="button" onClick={() => onSettingsChange(resetProfileToDefault(settings, activeProfile.id))}>
+                <RotateCcw size={18} /> Сбросить изменения
+              </button>
+              <button className="button danger" type="button" onClick={() => deleteSelectedProfile(activeProfile.id)}>
+                Удалить профиль
+              </button>
+            </>
+          )}
           <button className="button" type="button" onClick={() => setValidationMessage("Профиль сохранён локально.")}>
             Сохранить профиль
           </button>

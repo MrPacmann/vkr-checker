@@ -57,6 +57,12 @@ export interface RuleProfile {
   description: string;
   profileSchemaVersion?: number;
   source?: ProfileSource;
+  profileOrigin?: "built-in" | "user";
+  isLocked?: boolean;
+  isDefault?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  basedOnProfileId?: string;
   lockedDefault?: boolean;
   editableCopyAllowed?: boolean;
   originalProfileId?: string;

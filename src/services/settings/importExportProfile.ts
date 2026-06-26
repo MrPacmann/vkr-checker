@@ -1,6 +1,6 @@
 import type { RuleProfile } from "../../types/settings";
 import { regexPresets } from "../../config/regexPresets";
-import { defaultProfiles } from "../../config/defaultProfiles";
+import { defaultProfiles, PRIMARY_PROFILE_ID } from "../../config/defaultProfiles";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -19,11 +19,19 @@ export function validateProfile(value: unknown): RuleProfile {
 
   const profile = value as unknown as RuleProfile;
   const defaults = defaultProfiles.find((item) => item.id === profile.id) ?? defaultProfiles[0];
+  const isBuiltIn = defaultProfiles.some((item) => item.id === profile.id);
+  const profileOrigin = profile.profileOrigin ?? (profile.lockedDefault || profile.isLocked || isBuiltIn ? "built-in" : "user");
   return {
     ...profile,
     profileSchemaVersion: Number(profile.profileSchemaVersion) || 1,
     source: profile.source ?? defaults.source,
-    lockedDefault: Boolean(profile.lockedDefault),
+    profileOrigin,
+    isLocked: profile.isLocked ?? Boolean(profile.lockedDefault || profileOrigin === "built-in"),
+    isDefault: profile.isDefault ?? profile.id === PRIMARY_PROFILE_ID,
+    createdAt: profile.createdAt,
+    updatedAt: profile.updatedAt,
+    basedOnProfileId: profile.basedOnProfileId ?? profile.originalProfileId,
+    lockedDefault: Boolean(profile.lockedDefault || profileOrigin === "built-in"),
     editableCopyAllowed: profile.editableCopyAllowed ?? true,
     workTypes: profile.workTypes ?? defaults.workTypes ?? ["generic"],
     defaultWorkType: profile.defaultWorkType ?? defaults.defaultWorkType ?? "generic",
