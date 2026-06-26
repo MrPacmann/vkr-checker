@@ -4,7 +4,7 @@ import type { AppSettings, RuleProfile, WorkType } from "../types/settings";
 import { defaultRules } from "../config/defaultRules";
 import { regexPresets } from "../config/regexPresets";
 import { downloadBlob } from "../utils/file";
-import { duplicateProfile, getActiveProfile, resetProfileToDefault, updateProfile } from "../services/settings/profileManager";
+import { duplicateProfile, getActiveProfile, getVisibleProfiles, resetProfileToDefault, updateProfile } from "../services/settings/profileManager";
 import { profileFromJson, profileToJson } from "../services/settings/importExportProfile";
 import { ProfileSelector } from "./ProfileSelector";
 import { RegexEditor } from "./RegexEditor";
@@ -70,6 +70,8 @@ export function SettingsEditor({ settings, onSettingsChange }: SettingsEditorPro
   const [advancedError, setAdvancedError] = useState<string | null>(null);
   const [advancedDraft, setAdvancedDraft] = useState("");
   const isLocked = Boolean(activeProfile.lockedDefault);
+  const visibleProfiles = getVisibleProfiles(settings.profiles);
+  const selectedProfileId = visibleProfiles.some((profile) => profile.id === settings.activeProfileId) ? settings.activeProfileId : activeProfile.id;
 
   const setProfile = (profile: RuleProfile) => {
     if (isLocked) {
@@ -147,7 +149,7 @@ export function SettingsEditor({ settings, onSettingsChange }: SettingsEditorPro
     <div className="settings-grid">
       <aside className="settings-section">
         <h2>Профили</h2>
-        <ProfileSelector profiles={settings.profiles} activeProfileId={settings.activeProfileId} onSelect={selectProfile} />
+        <ProfileSelector profiles={visibleProfiles} activeProfileId={selectedProfileId} onSelect={selectProfile} />
         <div className="toolbar" style={{ marginTop: 14 }}>
           <button className="button" type="button" onClick={() => onSettingsChange(duplicateProfile(settings, activeProfile.id))}>
             <Copy size={18} /> Сохранить как копию

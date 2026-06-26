@@ -13,6 +13,7 @@ import type { InputMode } from "../types/report";
 import type { AppSettings, RuleProfile, WorkType } from "../types/settings";
 import type { VisualLayerResult } from "../types/visualLayer";
 import { runPdfOnlyCheck } from "../services/pdfOnly/pdfOnlyChecker";
+import { getVisibleProfiles } from "../services/settings/profileManager";
 import { buildVisualLayer } from "../services/visualLayer/visualLayerService";
 import { getInputMode, inputModeDescription, inputModeTitle } from "../utils/inputMode";
 
@@ -110,6 +111,8 @@ export function CheckerPage({ settings, onSettingsChange, activeProfile, onCompl
   const inputMode = getInputMode(docxFile, pdfFile);
   const canStartCheck = Boolean(docxFile || pdfFile);
   const supportedWorkTypes = activeProfile.workTypes?.length ? activeProfile.workTypes : (["generic"] as WorkType[]);
+  const visibleProfiles = getVisibleProfiles(settings.profiles);
+  const selectedProfileId = visibleProfiles.some((profile) => profile.id === settings.activeProfileId) ? settings.activeProfileId : activeProfile.id;
 
   const selectProfile = (profileId: string) => {
     const profile = settings.profiles.find((item) => item.id === profileId);
@@ -232,8 +235,8 @@ export function CheckerPage({ settings, onSettingsChange, activeProfile, onCompl
           <div className="grid two" style={{ marginBottom: 16 }}>
             <label>
               <span className="muted">Профиль проверки</span>
-              <select className="field" value={settings.activeProfileId} onChange={(event) => selectProfile(event.target.value)} disabled={running}>
-                {settings.profiles.map((profile) => (
+              <select className="field" value={selectedProfileId} onChange={(event) => selectProfile(event.target.value)} disabled={running}>
+                {visibleProfiles.map((profile) => (
                   <option value={profile.id} key={profile.id}>
                     {profile.name}
                   </option>

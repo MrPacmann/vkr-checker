@@ -4,7 +4,7 @@ import { buildDocumentModel } from "../src/services/documentParser/documentModel
 import { parseNumbering } from "../src/services/documentParser/numberingParser";
 import { parseStyles } from "../src/services/documentParser/stylesParser";
 import { profileFromJson, profileToJson } from "../src/services/settings/importExportProfile";
-import { resolveProfileForWorkType } from "../src/services/settings/profileManager";
+import { getActiveProfile, getVisibleProfiles, resolveActiveProfileId, resolveProfileForWorkType } from "../src/services/settings/profileManager";
 import type { RuleProfile } from "../src/types/settings";
 import type { VisualLayerResult } from "../src/types/visualLayer";
 import { parseSourceReference } from "../src/utils/sourceReferences";
@@ -210,6 +210,10 @@ assert(report.score > 0, "Score не должен падать до 0 на ре�
 
 const pmProfile = resolveProfileForWorkType(pmDepartmentNormcontrolProfile, "coursework");
 assert(defaultProfiles.some((item) => item.id === "pm-department-normcontrol"), "Профиль кафедры ПМ должен быть встроен.");
+const defaultVisibleProfiles = getVisibleProfiles(defaultProfiles);
+assert(defaultVisibleProfiles.length === 1 && defaultVisibleProfiles[0].id === "pm-department-normcontrol", "В пользовательском выборе по умолчанию должен быть только профиль кафедры ПМ.");
+assert(resolveActiveProfileId(defaultProfiles, "strict") === "pm-department-normcontrol", "Старый выбранный профиль strict должен заменяться на профиль кафедры ПМ.");
+assert(getActiveProfile({ activeProfileId: "simple", activeWorkType: "coursework", profiles: defaultProfiles, theme: "light" }).id === "pm-department-normcontrol", "Активный профиль должен fallback-иться на кафедру ПМ.");
 assert(pmProfile.requiredSections.includes("СПИСОК ИСТОЧНИКОВ"), "Для курсовой работы PM-профиль должен требовать список источников.");
 assert(pmProfile.pageLayout.rightMarginMm === 10, "PM-профиль должен требовать правое поле 10 мм.");
 

@@ -1,4 +1,4 @@
-import { createDefaultSettings, mergeDefaultProfiles } from "./profileManager";
+import { createDefaultSettings, mergeDefaultProfiles, resolveActiveProfileId } from "./profileManager";
 import type { AppSettings, WorkType } from "../../types/settings";
 import { validateProfile } from "./importExportProfile";
 
@@ -12,8 +12,9 @@ export function loadSettings(): AppSettings {
     if (!raw) return defaults;
     const parsed = JSON.parse(raw) as Partial<AppSettings>;
     const profiles = Array.isArray(parsed.profiles) ? mergeDefaultProfiles(parsed.profiles.map(validateProfile)) : defaults.profiles;
+    const activeProfileId = resolveActiveProfileId(profiles, parsed.activeProfileId);
     return {
-      activeProfileId: parsed.activeProfileId && profiles.some((profile) => profile.id === parsed.activeProfileId) ? parsed.activeProfileId : profiles[0].id,
+      activeProfileId,
       activeWorkType: workTypes.includes(parsed.activeWorkType as WorkType) ? (parsed.activeWorkType as WorkType) : defaults.activeWorkType,
       profiles,
       theme: parsed.theme === "dark" ? "dark" : "light"

@@ -1,4 +1,4 @@
-import { defaultProfiles } from "../../config/defaultProfiles";
+import { defaultProfiles, isUserVisibleProfile, PRIMARY_PROFILE_ID } from "../../config/defaultProfiles";
 import type { AppSettings, RuleProfile, WorkType } from "../../types/settings";
 import { createId } from "../../utils/id";
 
@@ -6,17 +6,33 @@ export function cloneDefaultProfiles(): RuleProfile[] {
   return JSON.parse(JSON.stringify(defaultProfiles)) as RuleProfile[];
 }
 
+export function getPrimaryProfile(): RuleProfile {
+  return defaultProfiles.find((profile) => profile.id === PRIMARY_PROFILE_ID) ?? defaultProfiles[0];
+}
+
+export function getVisibleProfiles(profiles: RuleProfile[]): RuleProfile[] {
+  const visible = profiles.filter(isUserVisibleProfile);
+  return visible.length > 0 ? visible : [getPrimaryProfile()];
+}
+
+export function resolveActiveProfileId(profiles: RuleProfile[], activeProfileId?: string | null): string {
+  const visibleProfiles = getVisibleProfiles(profiles);
+  return activeProfileId && visibleProfiles.some((profile) => profile.id === activeProfileId) ? activeProfileId : PRIMARY_PROFILE_ID;
+}
+
 export function createDefaultSettings(): AppSettings {
+  const primary = getPrimaryProfile();
   return {
-    activeProfileId: defaultProfiles[0].id,
-    activeWorkType: defaultProfiles[0].defaultWorkType ?? "generic",
+    activeProfileId: primary.id,
+    activeWorkType: primary.defaultWorkType ?? "generic",
     profiles: cloneDefaultProfiles(),
     theme: "light"
   };
 }
 
 export function getActiveProfile(settings: AppSettings): RuleProfile {
-  return settings.profiles.find((profile) => profile.id === settings.activeProfileId) ?? settings.profiles[0] ?? defaultProfiles[0];
+  const activeProfileId = resolveActiveProfileId(settings.profiles, settings.activeProfileId);
+  return settings.profiles.find((profile) => profile.id === activeProfileId) ?? getPrimaryProfile();
 }
 
 export function updateProfile(settings: AppSettings, profile: RuleProfile): AppSettings {

@@ -468,6 +468,16 @@ function cloneProfile(profile: RuleProfile, patch: Partial<RuleProfile>): RulePr
   return JSON.parse(JSON.stringify({ ...profile, ...patch })) as RuleProfile;
 }
 
+export const PRIMARY_PROFILE_ID = "pm-department-normcontrol";
+
+export const hiddenBuiltInProfileIds = new Set(["gost-732-2017", "department-guidelines", "simple", "strict", "custom"]);
+
+export function isUserVisibleProfile(profile: RuleProfile): boolean {
+  if (profile.id === PRIMARY_PROFILE_ID) return true;
+  if (hiddenBuiltInProfileIds.has(profile.id)) return false;
+  return !profile.lockedDefault;
+}
+
 export const defaultProfiles: RuleProfile[] = [
   baseProfile,
   pmDepartmentNormcontrolProfile,
