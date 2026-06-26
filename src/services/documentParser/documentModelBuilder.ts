@@ -20,7 +20,7 @@ import type { NumberingModel } from "./numberingParser";
 import { regexPresets } from "../../config/regexPresets";
 import { createId } from "../../utils/id";
 import { estimatePageFromParagraph, estimatePagesByText } from "../../utils/pageEstimator";
-import { collectMatches, parseCaption } from "../../utils/regex";
+import { collectMatches, parseCaption, safeRegExp } from "../../utils/regex";
 import { classifySourceReference } from "../../utils/sourceReferences";
 import { countWords, normalizeObjectNumber, normalizeSectionTitle, normalizeSpaces } from "../../utils/text";
 import { childrenDeep, directChild, directChildren, getAttr, getTextFromXmlNode, localName, twipsToMm, type XmlNode } from "../../utils/xml";
@@ -452,7 +452,10 @@ function findReferences(paragraphs: DocumentParagraph[], bibliographyCount: numb
         }
         continue;
       }
-      for (const match of collectMatches(pattern, paragraph.renderedText, kind === "appendix" ? "gu" : "giu")) {
+      const flags = kind === "appendix" ? "gu" : "giu";
+      const fallbackPattern = regexPresets.referencePatterns[kind as keyof typeof regexPresets.referencePatterns] ?? pattern;
+      const activePattern = safeRegExp(pattern, flags) ? pattern : fallbackPattern;
+      for (const match of collectMatches(activePattern, paragraph.renderedText, flags)) {
         if (match[1]) {
           if (kind === "appendix") {
             const previous = match.index && match.index > 0 ? paragraph.renderedText[match.index - 1] : "";
@@ -475,8 +478,11 @@ function findReferences(paragraphs: DocumentParagraph[], bibliographyCount: numb
 function findBibliography(paragraphs: DocumentParagraph[], profile?: RuleProfile): BibliographyEntry[] {
   const names = ["СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ", "СПИСОК ИСТОЧНИКОВ", "СПИСОК ЛИТЕРАТУРЫ", "БИБЛИОГРАФИЧЕСКИЙ СПИСОК", "БИБЛИОГРАФИЧЕСКИЙ СПИСОК ИСТОЧНИКОВ"];
   const extra = profile?.alternativeSectionNames["СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ"] ?? [];
-  const allowedNames = new Set([...names, ...extra].map(normalizeSectionTitle));
-  const start = paragraphs.findIndex((paragraph) => paragraph.isHeading && allowedNames.has(normalizeSectionTitle(paragraph.renderedText)));
+  const allowedNames = [...names, ...extra].map(normalizeSectionTitle);
+  const matchesBibliographyTitle = (normalized: string) =>
+    allowedNames.some((name) => normalized === name || normalized === `${name} ${name}` || normalized.startsWith(`${name} ${name} `));
+  const isTocLikeLine = (text: string) => (/\.{2,}|…|\s+\d+\s*$/u.test(text) && text.length < 180);
+  const start = paragraphs.findIndex((paragraph) => !isTocLikeLine(paragraph.renderedText) && matchesBibliographyTitle(normalizeSectionTitle(paragraph.renderedText)));
   if (start < 0) return [];
   const startLevel = paragraphs[start].headingLevel ?? 1;
   const entries: BibliographyEntry[] = [];

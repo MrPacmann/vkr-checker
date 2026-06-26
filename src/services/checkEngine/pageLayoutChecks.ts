@@ -40,10 +40,10 @@ function expectedLayout(layout: SectionLayout, profile: RuleProfile): ExpectedLa
 function describeMargins(layout: SectionLayout, expected: ExpectedLayout): string {
   const margins = layout.margins ?? {};
   return [
-    `левое: ${margins.leftMm ?? "?"} / ${expected.leftMarginMm} мм`,
-    `правое: ${margins.rightMm ?? "?"} / ${expected.rightMarginMm} мм`,
-    `верхнее: ${margins.topMm ?? "?"} / ${expected.topMarginMm} мм`,
-    `нижнее: ${margins.bottomMm ?? "?"} / ${expected.bottomMarginMm} мм`
+    `левое поле ${margins.leftMm ?? "?"} мм, ожидается ${expected.leftMarginMm} мм`,
+    `правое поле ${margins.rightMm ?? "?"} мм, ожидается ${expected.rightMarginMm} мм`,
+    `верхнее поле ${margins.topMm ?? "?"} мм, ожидается ${expected.topMarginMm} мм`,
+    `нижнее поле ${margins.bottomMm ?? "?"} мм, ожидается ${expected.bottomMarginMm} мм`
   ].join("; ");
 }
 
@@ -60,8 +60,7 @@ function isPmProfile(profile: RuleProfile): boolean {
 export function runPageLayoutChecks(document: ParsedDocument, profile: RuleProfile): RuleCheckResult[] {
   if (!profile.enabledChecks.pageLayout) return [];
   const issues: CheckIssue[] = [];
-  const fallbackLayouts = [document.paragraphs.find((paragraph) => paragraph.sectionLayout)?.sectionLayout].filter((layout): layout is SectionLayout => Boolean(layout));
-  const layouts: SectionLayout[] = document.sectionLayouts.length ? document.sectionLayouts : fallbackLayouts;
+  const layouts: SectionLayout[] = document.sectionLayouts;
 
   if (layouts.length === 0) {
     issues.push(
@@ -119,6 +118,30 @@ export function runPageLayoutChecks(document: ParsedDocument, profile: RuleProfi
       );
     }
     const margins = layout.margins ?? {};
+    const missingMargins = [
+      ["левое", margins.leftMm],
+      ["правое", margins.rightMm],
+      ["верхнее", margins.topMm],
+      ["нижнее", margins.bottomMm]
+    ].filter(([, actual]) => actual === undefined);
+    if (missingMargins.length > 0) {
+      issues.push(
+        createIssue(
+          {
+            level: "warning",
+            confidence: "unknown",
+            code: isPmProfile(profile) ? "PM_PAGE_MARGINS_UNAVAILABLE" : "PAGE_MARGINS_UNAVAILABLE",
+            category: "pageLayout",
+            message: `Секция ${index + 1}: не удалось надёжно определить поля страницы.`,
+            recommendation: "Откройте параметры страницы в Word и проверьте поля вручную.",
+            reason: `Не определены поля: ${missingMargins.map(([side]) => side).join(", ")}. ${describeMargins(layout, expected)}.`
+          },
+          document,
+          profile
+        )
+      );
+      return;
+    }
     const mismatchedMargins = [
       ["левое", margins.leftMm, expected.leftMarginMm],
       ["правое", margins.rightMm, expected.rightMarginMm],
@@ -130,6 +153,7 @@ export function runPageLayoutChecks(document: ParsedDocument, profile: RuleProfi
         .map(([side, actual, expected]) => `${side} поле ${actual ?? "?"} мм, ожидается ${expected} мм`)
         .join("; ");
       const firstMismatch = mismatchedMargins[0];
+      const allDetails = describeMargins(layout, expected);
       issues.push(
         createIssue(
           {
@@ -139,7 +163,7 @@ export function runPageLayoutChecks(document: ParsedDocument, profile: RuleProfi
             category: "pageLayout",
             message: isPmProfile(profile) ? `Секция ${index + 1}: ${details} по профилю кафедры ПМ для ${expected.label}.` : `Секция ${index + 1}: ${details}.`,
             recommendation: `Установите поля: левое ${expected.leftMarginMm} мм, правое ${expected.rightMarginMm} мм, верхнее ${expected.topMarginMm} мм, нижнее ${expected.bottomMarginMm} мм.`,
-            reason: describeMargins(layout, expected),
+            reason: `Секция ${index + 1}: ${allDetails}. Допуск сравнения: ${profile.pageLayout.marginToleranceMm ?? 0.5} мм.`,
             expected: `${firstMismatch?.[2] ?? "?"} мм`,
             actual: `${firstMismatch?.[1] ?? "?"} мм`
           },

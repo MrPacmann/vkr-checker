@@ -46,6 +46,24 @@ function buildStats(document: ParsedDocument, issues: CheckIssue[]): ReportStats
 }
 
 function buildDebug(document: ParsedDocument, profile: RuleProfile): ReportDebug {
+  const knownSectionNames = new Set([...profile.requiredSections, ...Object.values(profile.alternativeSectionNames).flat()].map(normalizeSectionTitle));
+  const sectionLikeParagraphs = document.paragraphs.filter((paragraph) => {
+    const normalized = normalizeSectionTitle(paragraph.renderedText || paragraph.text);
+    return paragraph.isHeading || knownSectionNames.has(normalized);
+  });
+  const sectionDebugRows = sectionLikeParagraphs.map((paragraph) => {
+    const normalized = normalizeSectionTitle(paragraph.renderedText || paragraph.text);
+    const styleSource = paragraph.resolvedStyle?.isHeading || paragraph.styleName ? "style" : undefined;
+    return {
+      rawText: paragraph.renderedText || paragraph.text,
+      normalizedText: normalized,
+      paragraphIndex: paragraph.index,
+      styleId: paragraph.styleId,
+      styleName: paragraph.styleName,
+      source: (knownSectionNames.has(normalized) ? "profile-alias" : styleSource ?? "text") as "style" | "text" | "profile-alias",
+      isInToc: paragraph.role === "toc" || /\.{2,}|…|\s+\d+\s*$/u.test(paragraph.renderedText || paragraph.text)
+    };
+  });
   const detectedCaptions = document.objects
     ? document.objects.map((object) => ({
         type: object.type,
@@ -68,13 +86,7 @@ function buildDebug(document: ParsedDocument, profile: RuleProfile): ReportDebug
   return {
     activeProfileId: profile.id,
     activeWorkType: profile.activeWorkType ?? profile.defaultWorkType ?? "generic",
-    detectedSections: document.headings.map((heading) => ({
-      rawText: heading.renderedText || heading.text,
-      normalizedText: normalizeSectionTitle(heading.renderedText || heading.text),
-      paragraphIndex: heading.index,
-      styleId: heading.styleId,
-      styleName: heading.styleName
-    })),
+    detectedSections: sectionDebugRows,
     detectedHeadings: document.headings.map((heading) => ({
       rawText: heading.renderedText || heading.text,
       normalizedText: normalizeSectionTitle(heading.renderedText || heading.text),
@@ -167,6 +179,7 @@ function visualLayerResultCheck(document: ParsedDocument, profile: RuleProfile, 
     );
   }
   if (visualLayer.mode === "textOnly") {
+    const docxWithoutPreview = visualLayer.label.includes("DOCX без точного превью");
     issues.push(
       createIssue(
         {
@@ -174,8 +187,9 @@ function visualLayerResultCheck(document: ParsedDocument, profile: RuleProfile, 
           confidence: "unknown",
           code: "VISUAL_LAYER_TEXT_ONLY",
           category: "visual",
-          message: "Визуальный слой построить не удалось.",
-          recommendation: "Загрузите PDF для просмотра страниц или проверьте визуальное расположение замечаний вручную.",
+          message: docxWithoutPreview ? "Точное визуальное превью недоступно без PDF." : "Визуальный слой построить не удалось.",
+          recommendation: "Загрузите PDF, экспортированный из этого же DOCX, для просмотра страниц и точной визуальной проверки.",
+          reason: visualLayer.message,
           source: "system"
         },
         document,

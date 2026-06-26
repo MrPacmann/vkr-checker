@@ -7,8 +7,57 @@ function acceptedNames(section: string, profile: RuleProfile): string[] {
   return [section, ...(profile.alternativeSectionNames[section] ?? [])].map(normalizeSectionTitle);
 }
 
-function findSectionIndex(document: ParsedDocument, names: string[]): number {
-  return document.headings.findIndex((heading) => names.includes(normalizeSectionTitle(heading.renderedText || heading.text)));
+function looksLikeTocLine(text: string): boolean {
+  return /\.{2,}|…|\s+\d+\s*$/u.test(text) && text.length < 180;
+}
+
+function repeatedTitleMatches(normalized: string, name: string): boolean {
+  if (normalized === name) return true;
+  const repeated = `${name} ${name}`;
+  return normalized === repeated || normalized.startsWith(`${repeated} `);
+}
+
+function sectionNameMatches(normalized: string, names: string[]): boolean {
+  return names.some((name) => repeatedTitleMatches(normalized, name));
+}
+
+function allAcceptedSectionNames(profile: RuleProfile): string[] {
+  return Array.from(new Set([...profile.requiredSections, ...Object.values(profile.alternativeSectionNames).flat()].map(normalizeSectionTitle)));
+}
+
+function tocParagraphIndexes(document: ParsedDocument, profile: RuleProfile): Set<number> {
+  const indexes = new Set<number>();
+  const knownSections = allAcceptedSectionNames(profile);
+  let inToc = false;
+  for (const paragraph of document.paragraphs) {
+    const text = paragraph.renderedText || paragraph.text;
+    const normalized = normalizeSectionTitle(text);
+    if (normalized === "СОДЕРЖАНИЕ" || normalized === "ОГЛАВЛЕНИЕ" || /toc|оглавлен|содержан/iu.test(paragraph.styleName ?? "")) {
+      inToc = true;
+      indexes.add(paragraph.index);
+      continue;
+    }
+    if (inToc && sectionNameMatches(normalized, knownSections) && !looksLikeTocLine(text)) {
+      inToc = false;
+    }
+    if (inToc || paragraph.role === "toc" || looksLikeTocLine(text)) indexes.add(paragraph.index);
+  }
+  return indexes;
+}
+
+function findSectionParagraph(document: ParsedDocument, names: string[], profile: RuleProfile): ParsedDocument["paragraphs"][number] | undefined {
+  const toc = tocParagraphIndexes(document, profile);
+  return document.paragraphs.find((paragraph) => {
+    const normalized = normalizeSectionTitle(paragraph.renderedText || paragraph.text);
+    if (toc.has(paragraph.index) && normalized !== "СОДЕРЖАНИЕ" && normalized !== "ОГЛАВЛЕНИЕ") return false;
+    return sectionNameMatches(normalized, names);
+  });
+}
+
+function findSectionIndex(document: ParsedDocument, names: string[], profile: RuleProfile): number {
+  const paragraph = findSectionParagraph(document, names, profile);
+  if (!paragraph) return -1;
+  return document.headings.findIndex((heading) => heading.index === paragraph.index);
 }
 
 function isPmProfile(profile: RuleProfile): boolean {
@@ -54,24 +103,27 @@ export function runStructureChecks(document: ParsedDocument, profile: RuleProfil
 
   if (profile.enabledChecks.requiredSections) {
     const issues = profile.requiredSections.flatMap((section) => {
-      const index = findSectionIndex(document, acceptedNames(section, profile));
+      const index = findSectionIndex(document, acceptedNames(section, profile), profile);
+      const paragraph = findSectionParagraph(document, acceptedNames(section, profile), profile);
       return index >= 0
         ? []
-        : [
-            createIssue(
-              {
-                level: section.includes("СПИСОК") ? "critical" : "error",
-                confidence: "high",
-                code: isPmProfile(profile) ? pmRequiredSectionCode(section) : "REQUIRED_SECTION_MISSING",
-                category: "structure",
-                message: `Не найден обязательный раздел «${section}».`,
-                recommendation: `Добавьте раздел «${section}» или допустимое альтернативное название, указанное в профиле проверки.`,
-                reason: "Раздел не найден среди заголовков и строк, похожих на заголовки."
-              },
-              document,
-              profile
-            )
-          ];
+        : paragraph
+          ? []
+          : [
+              createIssue(
+                {
+                  level: section.includes("СПИСОК") ? "critical" : "error",
+                  confidence: "high",
+                  code: isPmProfile(profile) ? pmRequiredSectionCode(section) : "REQUIRED_SECTION_MISSING",
+                  category: "structure",
+                  message: `Не найден обязательный раздел «${section}».`,
+                  recommendation: `Добавьте раздел «${section}» или допустимое альтернативное название, указанное в профиле проверки.`,
+                  reason: "Раздел не найден среди заголовков и строк, похожих на заголовки."
+                },
+                document,
+                profile
+              )
+            ];
     });
     results.push({ execution: makeExecution("REQUIRED_SECTIONS", "Наличие обязательных разделов", "structure", issues), issues });
   }
@@ -80,7 +132,7 @@ export function runStructureChecks(document: ParsedDocument, profile: RuleProfil
     const found = profile.requiredSections
       .map((section) => ({
         section,
-        index: findSectionIndex(document, acceptedNames(section, profile))
+        index: findSectionParagraph(document, acceptedNames(section, profile), profile)?.index ?? -1
       }))
       .filter((item) => item.index >= 0);
     const issues = [];
@@ -94,7 +146,7 @@ export function runStructureChecks(document: ParsedDocument, profile: RuleProfil
               code: isPmProfile(profile) ? "PM_STRUCTURE_WRONG_ORDER" : "SECTION_ORDER_INVALID",
               category: "structure",
               message: `Раздел «${found[i].section}» расположен раньше, чем ожидается по профилю.`,
-              paragraphIndex: document.headings[found[i].index]?.index,
+              paragraphIndex: found[i].index,
               recommendation: "Проверьте порядок обязательных разделов: реферат, содержание, введение, основная часть, заключение, список источников."
             },
             document,

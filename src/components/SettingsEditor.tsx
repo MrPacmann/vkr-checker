@@ -2,6 +2,7 @@ import { Download, RotateCcw, Upload, Copy } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { AppSettings, RuleProfile, WorkType } from "../types/settings";
 import { defaultRules } from "../config/defaultRules";
+import { regexPresets } from "../config/regexPresets";
 import { downloadBlob } from "../utils/file";
 import { duplicateProfile, getActiveProfile, resetProfileToDefault, updateProfile } from "../services/settings/profileManager";
 import { profileFromJson, profileToJson } from "../services/settings/importExportProfile";
@@ -42,6 +43,24 @@ const advancedProfileKeys = [
   "pageNumbering",
   "severityOverrides"
 ] as const;
+
+const captionPatternDescriptions: Record<string, string> = {
+  figure: "Как программа ищет подписи под рисунками. Например: Рисунок 1 — Название",
+  table: "Как программа ищет названия таблиц. Например: Таблица 1 — Название",
+  listing: "Например: Листинг 1 — Название",
+  scheme: "Например: Схема 1 — Название",
+  formula: "Подписи или номера формул. Например: (1) или (2.1)"
+};
+
+const referencePatternDescriptions: Record<string, string> = {
+  figure: "Как программа ищет ссылки на рисунки в тексте. Например: показано на рисунке 1",
+  table: "Как программа ищет ссылки на таблицы. Например: данные представлены в таблице 1",
+  listing: "Например: в листинге 1",
+  scheme: "Например: на схеме 1",
+  formula: "Например: по формуле (1)",
+  source: "Например: [1], [2, с. 15], [1–3]",
+  appendix: "Например: см. приложение А"
+};
 
 export function SettingsEditor({ settings, onSettingsChange }: SettingsEditorProps) {
   const activeProfile = getActiveProfile(settings);
@@ -105,6 +124,14 @@ export function SettingsEditor({ settings, onSettingsChange }: SettingsEditorPro
     } catch (error) {
       setValidationMessage(error instanceof Error ? error.message : "Профиль повреждён.");
     }
+  };
+
+  const resetRegexPatterns = () => {
+    setProfile({
+      ...activeProfile,
+      captionPatterns: regexPresets.captionPatterns,
+      referencePatterns: regexPresets.referencePatterns
+    });
   };
 
   const selectProfile = (activeProfileId: string) => {
@@ -270,10 +297,39 @@ export function SettingsEditor({ settings, onSettingsChange }: SettingsEditorPro
           </label>
         </div>
 
-        <div className="grid two" style={{ marginTop: 22 }}>
-          <RegexEditor title="Регулярные выражения подписей" patterns={activeProfile.captionPatterns} onChange={(captionPatterns) => setProfile({ ...activeProfile, captionPatterns: captionPatterns as RuleProfile["captionPatterns"] })} />
-          <RegexEditor title="Регулярные выражения ссылок" patterns={activeProfile.referencePatterns} onChange={(referencePatterns) => setProfile({ ...activeProfile, referencePatterns: referencePatterns as RuleProfile["referencePatterns"] })} />
-        </div>
+        <details className="advanced-settings" style={{ marginTop: 22 }}>
+          <summary className="debug-summary">Расширенные настройки для опытных пользователей</summary>
+          <div style={{ marginTop: 18 }}>
+            <h3>Расширенные шаблоны распознавания</h3>
+            <div className="notice" style={{ marginBottom: 14 }}>
+              <div>
+                <strong>Редактируйте осторожно</strong>
+                <p className="muted">Эти параметры нужны для тонкой настройки распознавания подписей и ссылок. Если вы не знаете, что такое регулярное выражение, лучше не изменяйте их.</p>
+              </div>
+            </div>
+            <button className="button" type="button" disabled={isLocked} onClick={resetRegexPatterns}>
+              <RotateCcw size={18} /> Сбросить шаблоны по умолчанию
+            </button>
+            <div className="grid two" style={{ marginTop: 18 }}>
+              <RegexEditor
+                title="Подписи объектов"
+                patterns={activeProfile.captionPatterns}
+                defaultPatterns={regexPresets.captionPatterns}
+                descriptions={captionPatternDescriptions}
+                disabled={isLocked}
+                onChange={(captionPatterns) => setProfile({ ...activeProfile, captionPatterns: captionPatterns as RuleProfile["captionPatterns"] })}
+              />
+              <RegexEditor
+                title="Ссылки в тексте"
+                patterns={activeProfile.referencePatterns}
+                defaultPatterns={regexPresets.referencePatterns}
+                descriptions={referencePatternDescriptions}
+                disabled={isLocked}
+                onChange={(referencePatterns) => setProfile({ ...activeProfile, referencePatterns: referencePatterns as RuleProfile["referencePatterns"] })}
+              />
+            </div>
+          </div>
+        </details>
 
         <div style={{ marginTop: 22 }}>
           <h3>Расширенные правила кафедры ПМ</h3>

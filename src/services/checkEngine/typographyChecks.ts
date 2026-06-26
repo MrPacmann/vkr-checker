@@ -1,10 +1,14 @@
 import type { DocumentParagraph, ParsedDocument } from "../../types/document";
 import type { RuleProfile } from "../../types/settings";
+import { hasVisibleText } from "../../utils/text";
 import { createIssue, makeExecution, type RuleCheckResult } from "./ruleRunner";
 
 function isBodyParagraph(paragraph: DocumentParagraph): boolean {
-  if (paragraph.role) return paragraph.role === "mainText" && paragraph.renderedText.length > 40;
-  return !paragraph.isHeading && !paragraph.inTable && paragraph.renderedText.length > 40;
+  if (!hasVisibleText(paragraph)) return false;
+  if (paragraph.hasDrawing || paragraph.hasPicture || paragraph.hasFormula || paragraph.hasManualPageBreak || paragraph.hasSectionBreak) return false;
+  const visibleText = paragraph.renderedText || paragraph.text;
+  if (paragraph.role) return paragraph.role === "mainText" && visibleText.length > 40;
+  return !paragraph.isHeading && !paragraph.inTable && visibleText.length > 40;
 }
 
 function approx(actual: number | undefined, expected: number, tolerance: number): boolean {

@@ -2,6 +2,11 @@ export function normalizeSpaces(value: string): string {
   return value.replace(/\u00a0/g, " ").replace(/[ \t]+/g, " ").trim();
 }
 
+export function hasVisibleText(value: { renderedText?: string; text?: string } | string): boolean {
+  const text = typeof value === "string" ? value : (value.renderedText ?? value.text ?? "");
+  return text.replace(/\u00a0/g, " ").replace(/[ \t\r\n]/g, "").trim().length > 0;
+}
+
 export function normalizeForCompare(value: string): string {
   return normalizeSectionTitle(value)
     .replace(/[.,:;]+$/g, "")

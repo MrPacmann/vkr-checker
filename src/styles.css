@@ -248,6 +248,11 @@ p {
   padding: 22px;
 }
 
+.advanced-settings {
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+
 .notice {
   padding: 16px;
   display: flex;
@@ -599,6 +604,12 @@ p {
   color: var(--muted);
   font-size: 12px;
   margin-bottom: 3px;
+}
+
+label small.muted {
+  display: block;
+  margin: 4px 0 6px;
+  line-height: 1.35;
 }
 
 .compact-list {

@@ -43,6 +43,18 @@ export async function buildVisualLayer(options: VisualLayerOptions): Promise<Vis
     }
   }
 
+  if (!options.pdfFile && options.profile.visualPreference !== "htmlPreview") {
+    return {
+      mode: "textOnly",
+      status: "partial",
+      label: "DOCX без точного превью",
+      message: "Точное визуальное превью недоступно. Для просмотра страниц загрузите PDF, экспортированный из этого же DOCX. HTML-превью DOCX может отличаться от отображения в Word и не используется как основной источник проверки.",
+      pageCount: null,
+      pages: [],
+      warnings: ["HTML-превью DOCX скрыто по умолчанию, потому что может отличаться от отображения в Microsoft Word."]
+    };
+  }
+
   if (options.profile.visualPreference !== "textOnly") {
     const pdfAttempt = await tryCreatePdfFromDocxLocally();
     warnings.push(pdfAttempt.reason);
@@ -56,8 +68,8 @@ export async function buildVisualLayer(options: VisualLayerOptions): Promise<Vis
       return {
         mode: "htmlPreview",
         status: pages.length > 0 ? "ready" : "partial",
-        label: "Используется HTML-превью DOCX",
-        message: "Номера страниц могут немного отличаться от Microsoft Word, так как постраничная разметка формируется браузером.",
+        label: "Экспериментальное HTML-превью DOCX",
+        message: "Может отличаться от реального документа в Word и не используется как основной источник проверки.",
         pageCount: pages.length || null,
         pages,
         htmlPreview,

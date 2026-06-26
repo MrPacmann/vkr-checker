@@ -86,6 +86,8 @@ export interface ReportDebug {
     paragraphIndex: number;
     styleId?: string;
     styleName?: string;
+    source?: "style" | "text" | "profile-alias";
+    isInToc?: boolean;
   }>;
   detectedCaptions: Array<{
     type: "figure" | "table" | "listing" | "formula" | "scheme";

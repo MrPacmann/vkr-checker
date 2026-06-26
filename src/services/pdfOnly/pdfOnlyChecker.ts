@@ -3,6 +3,7 @@ import type { ParsedPdfDocument, ParsedPdfLine } from "../../types/pdf";
 import type { CheckIssue, CheckReport, NotAvailableCheck, ReportStats } from "../../types/report";
 import type { RuleProfile } from "../../types/settings";
 import type { VisualLayerResult, VisualPage } from "../../types/visualLayer";
+import { regexPresets } from "../../config/regexPresets";
 import { createId } from "../../utils/id";
 import { findDuplicateNumbers, findMissingContinuousNumbers } from "../../utils/numbering";
 import { safeRegExp } from "../../utils/regex";
@@ -116,7 +117,9 @@ function findCaptions(lines: ParsedPdfLine[], profile: RuleProfile): DocumentCap
 
   for (const line of lines) {
     for (const [kind, pattern] of entries) {
-      const regex = safeRegExp(`^\\s*${pattern}\\s*$`, "iu");
+      const fallbackPattern = regexPresets.captionPatterns[kind] ?? pattern;
+      const activePattern = safeRegExp(`^\\s*${pattern}\\s*$`, "iu") ? pattern : fallbackPattern;
+      const regex = safeRegExp(`^\\s*${activePattern}\\s*$`, "iu");
       const match = regex?.exec(line.text);
       const weakFormulaMatch = kind === "formula" ? /\([А-ЯA-Z]?\d+(?:\.\d+)*\)\s*$/iu.exec(line.text) : null;
       if (match || weakFormulaMatch) {
@@ -143,7 +146,8 @@ function findReferences(lines: ParsedPdfLine[], profile: RuleProfile): DocumentR
   const entries = Object.entries(profile.referencePatterns) as Array<[DocumentReference["kind"], string]>;
   for (const line of lines) {
     for (const [kind, pattern] of entries) {
-      const regex = safeRegExp(pattern, "giu");
+      const fallbackPattern = regexPresets.referencePatterns[kind as keyof typeof regexPresets.referencePatterns] ?? pattern;
+      const regex = safeRegExp(pattern, "giu") ?? safeRegExp(fallbackPattern, "giu");
       if (!regex) continue;
       for (const match of line.text.matchAll(regex)) {
         if (!match[1]) continue;
