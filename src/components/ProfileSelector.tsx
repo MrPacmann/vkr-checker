@@ -17,6 +17,9 @@ export function ProfileSelector({ profiles, activeProfileId, onSelect }: Profile
             {profile.description}
           </p>
           {profile.source && <p className="muted" style={{ margin: "4px 0 0" }}>{profile.source.title}</p>}
+          <p className="muted" style={{ margin: "4px 0 0" }}>
+            Поля: левое {profile.pageLayout.leftMarginMm} мм, правое {profile.pageLayout.rightMarginMm} мм, верхнее {profile.pageLayout.topMarginMm} мм, нижнее {profile.pageLayout.bottomMarginMm} мм
+          </p>
         </button>
       ))}
     </div>

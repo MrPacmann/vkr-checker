@@ -71,6 +71,28 @@ export function buildReportHtml(report: CheckReport): string {
         )}</td></tr>`
     )
     .join("");
+  const debugTocEntries = report.debug?.detectedTocEntries
+    ?.map(
+      (entry) =>
+        `<tr><td>${entry.paragraphIndex + 1}</td><td>${escapeHtml(entry.normalizedText)}</td><td>${escapeHtml(entry.rawText)}</td><td>${escapeHtml(
+          entry.pageNumber ?? ""
+        )}</td></tr>`
+    )
+    .join("");
+  const debugBibliographyHeadings = report.debug?.detectedBibliographyHeadings
+    ?.map(
+      (heading) =>
+        `<tr><td>${heading.paragraphIndex + 1}</td><td>${escapeHtml(heading.normalizedText)}</td><td>${escapeHtml(heading.rawText)}</td><td>${heading.duplicated ? "да" : ""}</td></tr>`
+    )
+    .join("");
+  const debugBibliographyEntries = report.debug?.detectedBibliographyEntries
+    ?.map(
+      (entry) =>
+        `<tr><td>${entry.paragraphIndex + 1}</td><td>${escapeHtml(String(entry.number ?? ""))}</td><td>${escapeHtml(entry.listNumberText ?? "")}</td><td>${escapeHtml(
+          entry.rawText
+        )}</td></tr>`
+    )
+    .join("");
   const debugCaptions = report.debug?.detectedCaptions
     .map(
       (caption) =>
@@ -88,6 +110,28 @@ export function buildReportHtml(report: CheckReport): string {
     )
     .join("");
   const headingNumbering = report.debug?.headingNumbering;
+  const pageLayout = report.debug?.pageLayoutDebug;
+  const pageLayoutBlock = pageLayout
+    ? `<section class="summary">
+        <h2>Ожидаемые параметры страницы по активному профилю</h2>
+        <div class="grid">
+          <div class="metric"><span>Левое поле</span><strong>${pageLayout.expectedMarginsMm.left} мм</strong></div>
+          <div class="metric"><span>Правое поле</span><strong>${pageLayout.expectedMarginsMm.right} мм</strong></div>
+          <div class="metric"><span>Верхнее поле</span><strong>${pageLayout.expectedMarginsMm.top} мм</strong></div>
+          <div class="metric"><span>Нижнее поле</span><strong>${pageLayout.expectedMarginsMm.bottom} мм</strong></div>
+          <div class="metric"><span>Допуск</span><strong>${pageLayout.toleranceMm} мм</strong></div>
+        </div>
+        <p class="meta">Профиль: ${escapeHtml(pageLayout.activeProfileName)} · источник: ${escapeHtml(pageLayout.source)}</p>
+      </section>`
+    : "";
+  const actualPageLayoutRows = pageLayout?.actualMarginsMm
+    .map(
+      (layout) =>
+        `<tr><td>${layout.sectionIndex + 1}</td><td>${escapeHtml(layout.pageSize ?? "")}</td><td>${escapeHtml(layout.orientation ?? "")}</td><td>${layout.left ?? "?"}</td><td>${
+          layout.right ?? "?"
+        }</td><td>${layout.top ?? "?"}</td><td>${layout.bottom ?? "?"}</td></tr>`
+    )
+    .join("");
   const headingNumberingBlock = headingNumbering
     ? `<h2>Нумерация заголовков</h2>
         <p><strong>Надёжность:</strong> ${escapeHtml(headingNumbering.reliability)} · <strong>Источник:</strong> ${escapeHtml(headingNumbering.source)}</p>
@@ -152,6 +196,7 @@ export function buildReportHtml(report: CheckReport): string {
     </div>
     <p>${escapeHtml(report.scoreExplanation)}</p>
   </section>
+  ${pageLayoutBlock}
   <section class="summary">
     <h2>Краткое резюме</h2>
     <p>${escapeHtml(summary.statusText)}</p>
@@ -172,6 +217,14 @@ export function buildReportHtml(report: CheckReport): string {
         ${headingNumberingBlock}
         <h2>Разделы</h2>
         <table><thead><tr><th>Абзац</th><th>Нормализовано</th><th>Текст</th><th>Стиль</th></tr></thead><tbody>${debugSections || ""}</tbody></table>
+        <h2>Строки оглавления</h2>
+        <table><thead><tr><th>Абзац</th><th>Нормализовано</th><th>Текст</th><th>Страница</th></tr></thead><tbody>${debugTocEntries || ""}</tbody></table>
+        <h2>Заголовки библиографии</h2>
+        <table><thead><tr><th>Абзац</th><th>Нормализовано</th><th>Текст</th><th>Дубль</th></tr></thead><tbody>${debugBibliographyHeadings || ""}</tbody></table>
+        <h2>Записи библиографии</h2>
+        <table><thead><tr><th>Абзац</th><th>Номер</th><th>Номер списка</th><th>Текст</th></tr></thead><tbody>${debugBibliographyEntries || ""}</tbody></table>
+        <h2>Параметры страницы DOCX</h2>
+        <table><thead><tr><th>Секция</th><th>Формат</th><th>Ориентация</th><th>Левое</th><th>Правое</th><th>Верхнее</th><th>Нижнее</th></tr></thead><tbody>${actualPageLayoutRows || ""}</tbody></table>
         <h2>Подписи</h2>
         <table><thead><tr><th>Абзац</th><th>Тип</th><th>Номер</th><th>Название</th><th>Текст</th></tr></thead><tbody>${debugCaptions || ""}</tbody></table>
         <h2>Кандидаты в ссылки на источники</h2>

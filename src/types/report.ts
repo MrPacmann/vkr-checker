@@ -80,6 +80,27 @@ export interface NotAvailableCheck {
 export interface ReportDebug {
   activeProfileId?: string;
   activeWorkType?: WorkType;
+  pageLayoutDebug?: {
+    activeProfileId: string;
+    activeProfileName: string;
+    expectedMarginsMm: {
+      left: number;
+      right: number;
+      top: number;
+      bottom: number;
+    };
+    actualMarginsMm: Array<{
+      sectionIndex: number;
+      left?: number;
+      right?: number;
+      top?: number;
+      bottom?: number;
+      orientation?: string;
+      pageSize?: string;
+    }>;
+    toleranceMm: number;
+    source: "profile" | "edited-profile" | "default";
+  };
   detectedSections: Array<{
     rawText: string;
     normalizedText: string;
@@ -88,6 +109,27 @@ export interface ReportDebug {
     styleName?: string;
     source?: "style" | "text" | "profile-alias";
     isInToc?: boolean;
+    headingConfidence?: "high" | "medium" | "low" | "none";
+  }>;
+  detectedTocEntries?: Array<{
+    rawText: string;
+    normalizedText: string;
+    paragraphIndex: number;
+    styleId?: string;
+    styleName?: string;
+    pageNumber?: string;
+  }>;
+  detectedBibliographyHeadings?: Array<{
+    rawText: string;
+    normalizedText: string;
+    paragraphIndex: number;
+    duplicated?: boolean;
+  }>;
+  detectedBibliographyEntries?: Array<{
+    number?: number;
+    paragraphIndex: number;
+    rawText: string;
+    listNumberText?: string;
   }>;
   detectedCaptions: Array<{
     type: "figure" | "table" | "listing" | "formula" | "scheme";
@@ -103,7 +145,7 @@ export interface ReportDebug {
   detectedFigures?: Array<{ number?: string; paragraphIndex: number; rawText: string }>;
   detectedFormulas?: Array<{ number?: string; paragraphIndex: number; rawText: string }>;
   detectedListings?: Array<{ number: string; title: string; paragraphIndex: number; rawText: string }>;
-  detectedBibliography?: Array<{ number?: number; paragraphIndex: number; rawText: string }>;
+  detectedBibliography?: Array<{ number?: number; paragraphIndex: number; rawText: string; listNumberText?: string }>;
   detectedAppendices?: Array<{ label: string; paragraphIndex: number; rawText: string }>;
   sourceReferenceCandidates?: Array<{
     raw: string;

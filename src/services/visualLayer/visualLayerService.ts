@@ -51,7 +51,7 @@ export async function buildVisualLayer(options: VisualLayerOptions): Promise<Vis
       message: "Точное визуальное превью недоступно. Для просмотра страниц загрузите PDF, экспортированный из этого же DOCX. HTML-превью DOCX может отличаться от отображения в Word и не используется как основной источник проверки.",
       pageCount: null,
       pages: [],
-      warnings: ["HTML-превью DOCX скрыто по умолчанию, потому что может отличаться от отображения в Microsoft Word."]
+      warnings: []
     };
   }
 

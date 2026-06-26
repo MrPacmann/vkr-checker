@@ -49,6 +49,31 @@ export function isGroupedIssue(item: ReportIssueItem): item is GroupedIssue {
   return "grouped" in item && item.grouped === true;
 }
 
+const nonActionableCodes = new Set([
+  "VISUAL_LAYER_TEXT_ONLY",
+  "VISUAL_LAYER_WARNING",
+  "VISUAL_LAYER_HTML_PREVIEW",
+  "HEADING_NUMBERING_RECONSTRUCTION_UNRELIABLE",
+  "HEADING_WITHOUT_TEXT",
+  "HEADING_WITHOUT_TEXT_GROUPED"
+]);
+
+export function isReportIssueActionable(issue: CheckIssue): boolean {
+  if (issue.confidence === "low") return false;
+  if (issue.source === "system") return false;
+  if (nonActionableCodes.has(issue.code)) return false;
+  if (issue.code === "TOP_HEADING_NOT_NEW_PAGE" && issue.confidence !== "high") return false;
+  if (issue.canBeFalsePositive && issue.confidence !== "high") return false;
+  return true;
+}
+
+function isReportItemActionable(item: ReportIssueItem): boolean {
+  if (!isGroupedIssue(item)) return isReportIssueActionable(item);
+  if (!isReportIssueActionable(item.representative)) return false;
+  const lowPriorityCount = item.occurrences.filter((issue) => !isReportIssueActionable(issue)).length;
+  return lowPriorityCount / item.occurrences.length <= 0.5;
+}
+
 function groupKey(issue: CheckIssue): string {
   return `${issue.code}::${issue.category}`;
 }
@@ -124,21 +149,30 @@ function itemText(item: ReportIssueItem): string {
 
 export function buildReportSummary(report: CheckReport): ReportSummary {
   const groupedIssues = groupIssues(report.issues);
+  const actionableIssues = report.issues.filter(isReportIssueActionable);
+  const actionableCritical = actionableIssues.filter((issue) => issue.level === "critical").length;
+  const actionableErrors = actionableIssues.filter((issue) => issue.level === "error").length;
+  const actionableWarnings = actionableIssues.filter((issue) => issue.level === "warning").length;
   let statusText = "Замечаний не обнаружено.";
-  if (report.stats.critical > 0 || report.stats.errors > 0) {
+  if (actionableIssues.some((issue) => issue.category === "pageLayout" && (issue.level === "critical" || issue.level === "error"))) {
+    statusText = "Есть замечания по параметрам страницы активного профиля. Проверьте выбранный профиль и настройки полей.";
+  } else if (actionableCritical > 0 || actionableErrors > 0) {
     statusText = "Документ требует обязательных исправлений.";
-  } else if (report.stats.warnings > 0) {
-    statusText = "Документ в целом может быть принят, но требует проверки отдельных замечаний.";
+  } else if (actionableWarnings > 0) {
+    statusText = "Документ требует ручной проверки отдельных замечаний, но критических ошибок не обнаружено.";
+  } else if (report.issues.length > 0) {
+    statusText = "Критических ошибок не обнаружено. Есть низкоприоритетные замечания, требующие ручной проверки.";
   } else if (report.stats.info > 0) {
     statusText = "Критических замечаний не обнаружено.";
   }
 
   const important = groupedIssues
-    .filter((item) => item.level !== "info")
+    .filter((item) => item.level !== "info" && isReportItemActionable(item))
     .sort((a, b) => itemWeight(b) - itemWeight(a))
     .slice(0, 3)
     .map(itemText);
   const fallback = [...groupedIssues]
+    .filter(isReportItemActionable)
     .sort((a, b) => itemWeight(b) - itemWeight(a))
     .slice(0, 3)
     .map(itemText);
@@ -170,6 +204,54 @@ function issueLocation(issue: CheckIssue): string {
     page ? `страница ${page}` : null
   ].filter(Boolean);
   return parts.length > 0 ? parts.join(", ") : "место не определено";
+}
+
+function buildMarkdownDiagnostics(report: CheckReport): string {
+  const debug = report.debug;
+  if (!debug) return "";
+  const pageLayout = debug.pageLayoutDebug
+    ? [
+        "### Параметры страницы активного профиля",
+        "",
+        `- Профиль: ${markdownEscape(debug.pageLayoutDebug.activeProfileName)}`,
+        `- Ожидаемые поля: левое ${debug.pageLayoutDebug.expectedMarginsMm.left} мм, правое ${debug.pageLayoutDebug.expectedMarginsMm.right} мм, верхнее ${debug.pageLayoutDebug.expectedMarginsMm.top} мм, нижнее ${debug.pageLayoutDebug.expectedMarginsMm.bottom} мм`,
+        `- Допуск: ${debug.pageLayoutDebug.toleranceMm} мм`,
+        `- Источник: ${markdownEscape(debug.pageLayoutDebug.source)}`
+      ].join("\n")
+    : "";
+  const toc = debug.detectedTocEntries?.length
+    ? [
+        "### Строки оглавления",
+        "",
+        ...debug.detectedTocEntries.slice(0, 20).map((entry) => `- Абзац ${entry.paragraphIndex + 1}: ${markdownEscape(entry.rawText)}`)
+      ].join("\n")
+    : "";
+  const bibliographyHeadings = debug.detectedBibliographyHeadings?.length
+    ? [
+        "### Заголовки библиографии",
+        "",
+        ...debug.detectedBibliographyHeadings.map((heading) => `- Абзац ${heading.paragraphIndex + 1}: ${markdownEscape(heading.rawText)}${heading.duplicated ? " (дубль)" : ""}`)
+      ].join("\n")
+    : "";
+  const bibliographyEntries = debug.detectedBibliographyEntries?.length
+    ? [
+        "### Записи библиографии",
+        "",
+        ...debug.detectedBibliographyEntries
+          .slice(0, 20)
+          .map((entry) => `- Абзац ${entry.paragraphIndex + 1}: ${entry.number ? `№ ${entry.number}. ` : ""}${markdownEscape(entry.rawText)}`)
+      ].join("\n")
+    : "";
+  const sourceCandidates = debug.sourceReferenceCandidates?.length
+    ? [
+        "### Кандидаты в ссылки на источники",
+        "",
+        ...debug.sourceReferenceCandidates
+          .slice(0, 20)
+          .map((candidate) => `- Абзац ${candidate.paragraphIndex + 1}: ${markdownEscape(candidate.raw)} — ${markdownEscape(candidate.decision)}, ${markdownEscape(candidate.reason)}`)
+      ].join("\n")
+    : "";
+  return [pageLayout, toc, bibliographyHeadings, bibliographyEntries, sourceCandidates].filter(Boolean).join("\n\n");
 }
 
 export function buildShortReportText(report: CheckReport): string {
@@ -214,6 +296,7 @@ export function buildMarkdownReport(report: CheckReport): string {
       return `### ${markdownEscape(item.level)} — ${markdownEscape(item.category)}\n\n${markdownEscape(item.message)}\n\n- Код: ${markdownEscape(item.code)}\n- Достоверность: ${markdownEscape(confidenceLabel(item.confidence))}\n- Место: ${markdownEscape(issueLocation(item))}\n- Рекомендация: ${markdownEscape(item.recommendation)}`;
     })
     .join("\n\n");
+  const diagnostics = buildMarkdownDiagnostics(report);
 
   return [
     "# Отчёт предварительной проверки документа",
@@ -243,6 +326,7 @@ export function buildMarkdownReport(report: CheckReport): string {
     "## Все замечания",
     "",
     allIssues || "Замечаний не найдено.",
+    ...(diagnostics ? ["", "## Диагностика распознавания", "", diagnostics] : []),
     "",
     "## Примечание",
     "",

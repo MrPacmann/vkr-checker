@@ -245,14 +245,18 @@ function parseParagraph(
   const looksLikeMandatorySection = !looksLikeTocLine && knownSectionNames.some((section) => normalizeSectionTitle(section) === sectionCandidate);
   const resolvedStyle = resolveStyleInheritance(styleId, styles);
   const styleLooksHeading = Boolean(resolvedStyle.isHeading || style?.isHeading || /heading|заголовок|title|название/iu.test(styleName ?? ""));
-  const numberedHeading = !looksLikeTocLine && /^\d+(?:\.\d+)*\s+\S+/u.test(renderedText) && renderedText.length < 140;
+  const caption = parseCaption(renderedText);
+  const numberedHeading = !numbering?.numId && !caption && !looksLikeTocLine && /^\d+(?:\.\d+){0,2}\s+\S+/u.test(renderedText) && renderedText.length < 140;
   const uppercaseStandalone = !looksLikeTocLine && renderedText.length < 120 && /^[А-ЯЁA-Z0-9 .-]+$/u.test(renderedText) && /[А-ЯЁA-Z]/u.test(renderedText);
   const hasDrawing = childrenDeep(paragraph, "drawing").length > 0 || childrenDeep(paragraph, "object").length > 0;
   const hasFormula = childrenDeep(paragraph, "oMath").length > 0 || childrenDeep(paragraph, "oMathPara").length > 0;
   const isHeading = Boolean(renderedText && !inTable && (styleLooksHeading || looksLikeMandatorySection || numberedHeading || uppercaseStandalone));
+  const headingConfidence = !isHeading ? "none" : styleLooksHeading || looksLikeMandatorySection ? "high" : numberedHeading ? "medium" : "low";
   const headingLevel = resolvedStyle.headingLevel ?? style?.headingLevel ?? (numberedHeading ? renderedText.split(" ")[0].split(".").length : looksLikeMandatorySection ? 1 : undefined);
   const parsedHeading = isHeading ? buildParsedHeading(text, renderedText, headingLevel, numbering) : undefined;
   const sectPr = directChild(pPr ?? paragraph, "sectPr");
+  const isListItem = Boolean(numbering?.numId || numberingPrefix);
+  const listNumberText = numbering?.renderedPrefix ?? numbering?.currentNumber ?? numberingPrefix;
 
   return {
     index,
@@ -263,6 +267,12 @@ function parseParagraph(
     styleName,
     resolvedStyle,
     isHeading,
+    isListItem,
+    listNumberText,
+    isTocParagraph: false,
+    isBibliographyEntry: false,
+    isBibliographyHeading: false,
+    headingConfidence,
     headingLevel,
     parsedHeading,
     numbering,
@@ -421,6 +431,7 @@ function findReferences(paragraphs: DocumentParagraph[], bibliographyCount: numb
   const references: DocumentReference[] = [];
   const sourceReferenceCandidates: SourceReferenceCandidate[] = [];
   for (const paragraph of paragraphs) {
+    if (paragraph.isTocParagraph || paragraph.isBibliographyEntry || paragraph.isBibliographyHeading) continue;
     const paragraphCaption = parseCaption(paragraph.renderedText);
     for (const [kind, pattern] of entries) {
       if (paragraphCaption && paragraphCaption.kind === kind) continue;
@@ -475,39 +486,196 @@ function findReferences(paragraphs: DocumentParagraph[], bibliographyCount: numb
   return { references, sourceReferenceCandidates };
 }
 
+function bibliographyHeadingNames(profile?: RuleProfile): string[] {
+  const defaults = [
+    "СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ",
+    "СПИСОК ИСТОЧНИКОВ",
+    "СПИСОК ЛИТЕРАТУРЫ",
+    "БИБЛИОГРАФИЧЕСКИЙ СПИСОК",
+    "БИБЛИОГРАФИЧЕСКИЙ СПИСОК ИСТОЧНИКОВ"
+  ];
+  const profileNames = [
+    ...(profile?.requiredSections ?? []),
+    ...Object.values(profile?.alternativeSectionNames ?? {}).flat(),
+    ...(profile?.alternativeSectionNames["СПИСОК ИСТОЧНИКОВ"] ?? []),
+    ...(profile?.alternativeSectionNames["СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ"] ?? [])
+  ].filter((name) => /СПИСОК|ИСТОЧНИК|ЛИТЕРАТУР|БИБЛИОГРАФ/iu.test(name));
+  return Array.from(new Set([...defaults, ...profileNames].map(normalizeSectionTitle)));
+}
+
+function repeatedTitleMatches(normalized: string, name: string): boolean {
+  if (normalized === name) return true;
+  const repeated = `${name} ${name}`;
+  return normalized === repeated || normalized.startsWith(`${repeated} `);
+}
+
+function matchesBibliographyTitle(normalized: string, names: string[]): boolean {
+  return names.some((name) => repeatedTitleMatches(normalized, name));
+}
+
+function isBibliographySubheading(text: string): boolean {
+  return /^(Учебная и научная литература|Научные статьи|Официальная техническая документация|Источники данных|Электронные ресурсы|Интернет-ресурсы|Нормативные правовые акты|Нормативные документы)$/iu.test(
+    normalizeSpaces(text)
+  );
+}
+
+function bibliographyEntryNumber(paragraph: DocumentParagraph): { number?: number; text: string; listNumberText?: string } | null {
+  const renderedText = normalizeSpaces(paragraph.renderedText || paragraph.text);
+  const explicit = /^\s*(\d+)[.)]\s+(.+)/u.exec(renderedText) ?? /^\s*\[(\d+)\]\s+(.+)/u.exec(renderedText);
+  if (explicit) return { number: Number(explicit[1]), text: normalizeSpaces(explicit[2]), listNumberText: explicit[1] };
+  const loose = /^\s*(\d+)\s+(.+)/u.exec(renderedText);
+  if (loose && !/^\d+(?:\.\d+)+\s+/u.test(renderedText)) return { number: Number(loose[1]), text: normalizeSpaces(loose[2]), listNumberText: loose[1] };
+  const prefixNumber = paragraph.listNumberText ? /(\d+)/u.exec(paragraph.listNumberText)?.[1] : undefined;
+  if (prefixNumber) return { number: Number(prefixNumber), text: normalizeSpaces(paragraph.text), listNumberText: paragraph.listNumberText };
+  const currentNumber = paragraph.numbering?.currentNumber && /^\d+$/u.test(paragraph.numbering.currentNumber) ? Number(paragraph.numbering.currentNumber) : undefined;
+  if (currentNumber !== undefined) return { number: currentNumber, text: normalizeSpaces(paragraph.text), listNumberText: paragraph.listNumberText };
+  return null;
+}
+
+function looksBibliographic(text: string): boolean {
+  return text.length > 25 && /(https?:\/\/|www\.|URL|doi|20\d{2}|19\d{2}|М\.|СПб\.|Москва|Санкт-Петербург|изд|ISBN|Электронный ресурс|дата обращения)/iu.test(text);
+}
+
+function markAsNonHeading(paragraph: DocumentParagraph): void {
+  paragraph.isHeading = false;
+  paragraph.headingLevel = undefined;
+  paragraph.parsedHeading = undefined;
+  paragraph.headingConfidence = "none";
+}
+
 function findBibliography(paragraphs: DocumentParagraph[], profile?: RuleProfile): BibliographyEntry[] {
-  const names = ["СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ", "СПИСОК ИСТОЧНИКОВ", "СПИСОК ЛИТЕРАТУРЫ", "БИБЛИОГРАФИЧЕСКИЙ СПИСОК", "БИБЛИОГРАФИЧЕСКИЙ СПИСОК ИСТОЧНИКОВ"];
-  const extra = profile?.alternativeSectionNames["СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ"] ?? [];
-  const allowedNames = [...names, ...extra].map(normalizeSectionTitle);
-  const matchesBibliographyTitle = (normalized: string) =>
-    allowedNames.some((name) => normalized === name || normalized === `${name} ${name}` || normalized.startsWith(`${name} ${name} `));
-  const isTocLikeLine = (text: string) => (/\.{2,}|…|\s+\d+\s*$/u.test(text) && text.length < 180);
-  const start = paragraphs.findIndex((paragraph) => !isTocLikeLine(paragraph.renderedText) && matchesBibliographyTitle(normalizeSectionTitle(paragraph.renderedText)));
+  const names = bibliographyHeadingNames(profile);
+  for (const paragraph of paragraphs) {
+    paragraph.isBibliographyEntry = false;
+    paragraph.isBibliographyHeading = false;
+  }
+
+  const start = paragraphs.findIndex((paragraph) => !paragraph.isTocParagraph && matchesBibliographyTitle(normalizeSectionTitle(paragraph.renderedText || paragraph.text), names));
   if (start < 0) return [];
-  const startLevel = paragraphs[start].headingLevel ?? 1;
+
+  let entryStart = start + 1;
+  let bibliographyHeadingCount = 0;
+  for (let index = start; index < paragraphs.length; index += 1) {
+    const paragraph = paragraphs[index];
+    const normalized = normalizeSectionTitle(paragraph.renderedText || paragraph.text);
+    if (!matchesBibliographyTitle(normalized, names) || paragraph.isTocParagraph) break;
+    paragraph.isBibliographyHeading = true;
+    if (bibliographyHeadingCount > 0) markAsNonHeading(paragraph);
+    bibliographyHeadingCount += 1;
+    entryStart = index + 1;
+  }
+
   const entries: BibliographyEntry[] = [];
-  for (const paragraph of paragraphs.slice(start + 1)) {
-    const candidateText = paragraph.renderedText;
+  for (const paragraph of paragraphs.slice(entryStart)) {
+    const candidateText = normalizeSpaces(paragraph.renderedText || paragraph.text);
     if (!candidateText) continue;
-    if (/^(Учебная и научная литература|Научные статьи|Официальная техническая документация|Источники данных)/iu.test(candidateText)) continue;
-    if (paragraph.isHeading && (paragraph.headingLevel ?? 1) <= startLevel) break;
-    const match = /^\s*(\d+)[.)]\s+(.+)/u.exec(candidateText);
-    const looksBibliographic = candidateText.length > 25 && /(https?:\/\/|www\.|URL|doi|20\d{2}|19\d{2}|М\.|СПб\.|Москва|Санкт-Петербург|изд|ISBN|Электронный ресурс|дата обращения)/iu.test(candidateText);
-    const listStyleEntry = /нумерован|number/iu.test(paragraph.styleName ?? "") && looksBibliographic;
-    if (match || paragraph.numbering?.numId || listStyleEntry) {
-      entries.push({
-        number: match?.[1] ? Number(match[1]) : entries.length + 1,
-        text: match?.[2] ? normalizeSpaces(match[2]) : paragraph.text,
-        paragraphIndex: paragraph.index
-      });
-    } else if (entries.length > 0 && looksBibliographic) {
-      entries.push({
-        text: paragraph.text,
-        paragraphIndex: paragraph.index
-      });
+    if (paragraph.isTocParagraph) continue;
+    if (matchesBibliographyTitle(normalizeSectionTitle(candidateText), names)) {
+      paragraph.isBibliographyHeading = true;
+      markAsNonHeading(paragraph);
+      continue;
+    }
+    if (isBibliographySubheading(candidateText)) continue;
+    if (/^ПРИЛОЖЕНИ[ЕЯ](?:\s+[А-ЯA-Z0-9])?/iu.test(candidateText)) break;
+
+    const numbered = bibliographyEntryNumber(paragraph);
+    const listStyleEntry = /нумерован|number|список|list/iu.test(paragraph.styleName ?? "") && looksBibliographic(candidateText);
+    const entryLike = Boolean(numbered || paragraph.numbering?.numId || listStyleEntry || (entries.length > 0 && looksBibliographic(candidateText)));
+
+    if (!entryLike) {
+      if (entries.length > 0) break;
+      if (paragraph.isHeading && paragraph.headingConfidence === "high") break;
+      continue;
+    }
+
+    paragraph.isBibliographyEntry = true;
+    markAsNonHeading(paragraph);
+    entries.push({
+      number: numbered?.number ?? (paragraph.numbering?.numId ? entries.length + 1 : undefined),
+      text: numbered?.text ?? normalizeSpaces(paragraph.text || paragraph.renderedText),
+      paragraphIndex: paragraph.index,
+      listNumberText: numbered?.listNumberText ?? paragraph.listNumberText
+    });
+  }
+
+  return entries;
+}
+
+function tocHeadingText(normalized: string): boolean {
+  return normalized === "СОДЕРЖАНИЕ" || normalized === "ОГЛАВЛЕНИЕ";
+}
+
+function allKnownSectionNames(profile?: RuleProfile): string[] {
+  return Array.from(
+    new Set(
+      [
+        "РЕФЕРАТ",
+        "АННОТАЦИЯ",
+        "СОДЕРЖАНИЕ",
+        "ОГЛАВЛЕНИЕ",
+        "ВВЕДЕНИЕ",
+        "ЗАКЛЮЧЕНИЕ",
+        "СПИСОК ИСТОЧНИКОВ",
+        "СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ",
+        ...(profile?.requiredSections ?? []),
+        ...Object.values(profile?.alternativeSectionNames ?? {}).flat()
+      ].map(normalizeSectionTitle)
+    )
+  );
+}
+
+function isTocEntryText(text: string): boolean {
+  const normalized = normalizeSpaces(text);
+  if (!normalized || normalized.length > 220) return false;
+  if (parseCaption(normalized)) return false;
+  return /\.{2,}|…/u.test(normalized) || /^\s*\d+(?:\.\d+)*\s+.+\s+\d+\s*$/u.test(normalized) || /^[\p{L}\s().,-]+\s+\d+\s*$/u.test(normalized);
+}
+
+function markTocParagraphs(paragraphs: DocumentParagraph[], knownSectionNames: string[]): void {
+  let inToc = false;
+  for (const paragraph of paragraphs) {
+    const text = paragraph.renderedText || paragraph.text;
+    const normalized = normalizeSectionTitle(text);
+    const styleLooksToc = /toc|оглавлен|содержан/iu.test(paragraph.styleName ?? "") || /toc/iu.test(paragraph.styleId ?? "");
+
+    if (tocHeadingText(normalized)) {
+      inToc = true;
+      paragraph.isTocParagraph = true;
+      continue;
+    }
+
+    if (inToc) {
+      const entryLike = isTocEntryText(text);
+      const startsKnownRealSection = knownSectionNames.includes(normalized) && !entryLike;
+      if (startsKnownRealSection) {
+        inToc = false;
+      } else if (entryLike || styleLooksToc) {
+        paragraph.isTocParagraph = true;
+        markAsNonHeading(paragraph);
+        continue;
+      }
+    }
+
+    if (styleLooksToc || (paragraph.isTocParagraph && !tocHeadingText(normalized))) {
+      paragraph.isTocParagraph = true;
+      markAsNonHeading(paragraph);
     }
   }
-  return entries;
+}
+
+function isRealSectionHeading(paragraph: DocumentParagraph): boolean {
+  const normalized = normalizeSectionTitle(paragraph.renderedText || paragraph.text);
+  if (!paragraph.isHeading || paragraph.isBibliographyEntry) return false;
+  if (paragraph.isTocParagraph && !tocHeadingText(normalized)) return false;
+  return paragraph.headingConfidence !== "none";
+}
+
+function recomputeSectionTitles(paragraphs: DocumentParagraph[]): void {
+  let currentSection: string | undefined;
+  for (const paragraph of paragraphs) {
+    if (isRealSectionHeading(paragraph)) currentSection = paragraph.renderedText || paragraph.text;
+    paragraph.sectionTitle = currentSection;
+  }
 }
 
 function documentObjectToCaption(object: DocumentObject): DocumentCaption {
@@ -588,6 +756,10 @@ function applyParagraphRoles(
       paragraph.role = "technical";
     } else if (!paragraph.text) {
       paragraph.role = "empty";
+    } else if (paragraph.isTocParagraph && !tocHeadingText(normalizeSectionTitle(paragraph.renderedText || paragraph.text))) {
+      paragraph.role = "toc";
+    } else if (bibliographyIndexes.has(paragraph.index) || paragraph.isBibliographyEntry) {
+      paragraph.role = "bibliographyEntry";
     } else if (paragraph.isHeading && /^ПРИЛОЖЕНИ[ЕЯ](?:\s+[А-ЯA-Z0-9])?/iu.test(paragraph.renderedText)) {
       paragraph.role = "appendixTitle";
     } else if (paragraph.isHeading) {
@@ -596,15 +768,13 @@ function applyParagraphRoles(
       paragraph.role = "tableCellText";
     } else if (caption) {
       paragraph.role = roleForCaptionKind(caption.kind);
-    } else if (bibliographyIndexes.has(paragraph.index)) {
-      paragraph.role = "bibliographyEntry";
     } else if (looksLikeTocParagraph(paragraph)) {
       paragraph.role = "toc";
     } else if (paragraph.hasFormula) {
       paragraph.role = "formula";
     } else if (paragraph.hasPicture && !paragraph.text) {
       paragraph.role = "imageOnly";
-    } else if (paragraph.numbering?.numId) {
+    } else if (paragraph.isListItem || paragraph.numbering?.numId) {
       paragraph.role = "listItem";
     } else {
       paragraph.role = "mainText";
@@ -777,7 +947,7 @@ export function buildDocumentModel(input: DocumentBuildInput, profile?: RuleProf
     paragraphs: []
   };
   const tables: DocumentTable[] = [];
-  const knownSectionNames = [...(profile?.requiredSections ?? []), ...Object.values(profile?.alternativeSectionNames ?? {}).flat()];
+  const knownSectionNames = allKnownSectionNames(profile);
   const sectionLayouts: SectionLayout[] = [];
 
   for (const child of blockChildren(body)) {
@@ -797,8 +967,10 @@ export function buildDocumentModel(input: DocumentBuildInput, profile?: RuleProf
     }
   }
 
-  const plainText = state.paragraphs.map((paragraph) => paragraph.renderedText).filter(Boolean).join("\n");
+  markTocParagraphs(state.paragraphs, knownSectionNames);
   const bibliography = findBibliography(state.paragraphs, profile);
+  recomputeSectionTitles(state.paragraphs);
+  const plainText = state.paragraphs.map((paragraph) => paragraph.renderedText).filter(Boolean).join("\n");
   const captions = findCaptions(state.paragraphs, profile);
   const objects = findObjects(state.paragraphs);
   const referenceDetection = findReferences(state.paragraphs, bibliography.length, profile);
@@ -806,7 +978,7 @@ export function buildDocumentModel(input: DocumentBuildInput, profile?: RuleProf
   applyParagraphRoles(state.paragraphs, captions, bibliography, objects);
   const tablesWithCaptions = attachTableCaptions(tables, captions, objects);
   const images = extractImages(input.documentXml, state.paragraphs, input.relationships);
-  const headings = state.paragraphs.filter((paragraph) => paragraph.isHeading);
+  const headings = state.paragraphs.filter(isRealSectionHeading);
   const headingNumbering = buildHeadingNumberingDiagnostics(headings, state.paragraphs);
   const formulaCount = Math.max(captions.filter((caption) => caption.kind === "formula").length, childrenDeep(input.documentXml, "oMath").length);
 

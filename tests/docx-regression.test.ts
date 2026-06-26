@@ -458,5 +458,50 @@ assert(stabilizationMissingSections.length === 0, `Реальные раздел
 assert(!stabilizationReport.issues.some((issue) => issue.code === "PM_PAGE_MARGINS_MISMATCH"), "Корректные поля страницы не должны давать PM_PAGE_MARGINS_MISMATCH.");
 assert(!stabilizationReport.issues.some((issue) => issue.category === "typography" && issue.location.paragraphIndex === 9), "Пустой пробельный абзац не должен проверяться как основной текст.");
 assert(stabilizationReport.debug?.detectedSections.some((section) => section.normalizedText === "РЕФЕРАТ" && section.isInToc === false), "Debug должен показывать реальный раздел РЕФЕРАТ вне содержания.");
+assert(stabilizationDocument.paragraphs.find((paragraph) => paragraph.renderedText === "Заключение 5")?.isTocParagraph, "Строка «Заключение 5» должна быть строкой оглавления.");
+assert(!stabilizationReport.debug?.detectedSections.some((section) => section.rawText === "Заключение 5"), "Строка оглавления «Заключение 5» не должна попадать в реальные разделы.");
+assert(stabilizationReport.debug?.detectedTocEntries?.some((entry) => entry.rawText === "Заключение 5"), "Debug должен показывать «Заключение 5» в строках оглавления.");
+const stabilizationBibliographyEntry = stabilizationDocument.paragraphs.find((paragraph) => paragraph.renderedText.startsWith("1. Иванов"));
+assert(stabilizationBibliographyEntry?.isBibliographyEntry, "Нумерованная строка списка источников должна быть библиографической записью.");
+assert(stabilizationBibliographyEntry?.isHeading === false && stabilizationBibliographyEntry.headingConfidence === "none", "Библиографическая запись не должна оставаться заголовком.");
+assert(stabilizationReport.debug?.detectedBibliographyHeadings?.some((heading) => heading.rawText.includes("СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ")), "Debug должен показывать заголовок библиографии.");
+assert(stabilizationReport.debug?.detectedBibliographyEntries?.length === 1, "Debug должен показывать одну запись библиографии в stabilizationDocument.");
+assert(!stabilizationReport.issues.some((issue) => issue.code === "TOP_HEADING_NOT_NEW_PAGE"), "DOCX-only не должен создавать TOP_HEADING_NOT_NEW_PAGE без надёжной постраничной проверки.");
+assert(stabilizationReport.debug?.pageLayoutDebug?.expectedMarginsMm.right === 10, "Page layout debug должен показывать правое поле активного PM-профиля 10 мм.");
+
+const tenSourcesDocument = buildParsedDocument(
+  `<?xml version="1.0" encoding="UTF-8"?>
+  <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+    <w:body>
+      <w:p><w:r><w:t>Содержание</w:t></w:r></w:p>
+      <w:p><w:r><w:t>Введение</w:t></w:r></w:p>
+      <w:p><w:r><w:t>Основной текст введения с описанием цели и задач работы.</w:t></w:r></w:p>
+      <w:p><w:r><w:t>Заключение</w:t></w:r></w:p>
+      <w:p><w:r><w:t>Выводы по работе представлены в заключении.</w:t></w:r></w:p>
+      <w:p><w:r><w:t>СПИСОК ИСТОЧНИКОВ</w:t></w:r></w:p>
+      ${Array.from({ length: 10 }, (_, index) => `<w:p><w:r><w:t>${index + 1}. Автор ${index + 1}. Источник по анализу данных. М.: Наука, 2024.</w:t></w:r></w:p>`).join("")}
+    </w:body>
+  </w:document>`,
+  pmProfile
+);
+const tenSourcesProfile: RuleProfile = { ...pmProfile, minSources: 10, minSourcesByWorkType: { ...pmProfile.minSourcesByWorkType, coursework: 10 }, maxSourcesByWorkType: { ...pmProfile.maxSourcesByWorkType, coursework: 10 } };
+const tenSourcesReport = runChecks({ document: tenSourcesDocument, profile: tenSourcesProfile, visualLayer, inputMode: "docxOnly" });
+assert(tenSourcesDocument.bibliography.length === 10, `Должно быть найдено 10 источников, найдено ${tenSourcesDocument.bibliography.length}.`);
+assert(tenSourcesDocument.bibliography.every((entry) => tenSourcesDocument.paragraphs[entry.paragraphIndex]?.isHeading === false), "Все записи библиографии должны быть исключены из заголовков.");
+assert(!tenSourcesReport.issues.some((issue) => issue.code === "PM_BIBLIOGRAPHY_COUNT_ERROR"), "10 источников не должны давать ошибку количества при тестовом пороге 10.");
+
+const docxOnlyVisualLayer: VisualLayerResult = {
+  mode: "textOnly",
+  status: "partial",
+  label: "DOCX без точного превью",
+  message: "Визуальный слой: DOCX без точного превью. Для точной постраничной проверки загрузите PDF, экспортированный из этого же DOCX.",
+  pageCount: null,
+  pages: [],
+  warnings: []
+};
+const docxOnlyVisualReport = runChecks({ document: stabilizationDocument, profile: pmProfile, visualLayer: docxOnlyVisualLayer, inputMode: "docxOnly" });
+const visualExecution = docxOnlyVisualReport.checkExecutions.find((check) => check.code === "VISUAL_LAYER");
+assert(!docxOnlyVisualReport.issues.some((issue) => issue.code === "VISUAL_LAYER_TEXT_ONLY" || issue.code === "VISUAL_LAYER_WARNING"), "DOCX без точного превью должен быть статусом, а не issue.");
+assert(visualExecution?.status === "partial" && visualExecution.issueCount === 0, "Визуальный слой DOCX-only должен быть partial без issue.");
 
 console.log("DOCX regression test passed");

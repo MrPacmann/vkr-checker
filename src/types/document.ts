@@ -65,6 +65,8 @@ export type ParagraphRole =
   | "technical"
   | "unknown";
 
+export type HeadingConfidence = "high" | "medium" | "low" | "none";
+
 export interface SectionLayout {
   pageWidthMm?: number;
   pageHeightMm?: number;
@@ -91,6 +93,12 @@ export interface DocumentParagraph {
   };
   role?: ParagraphRole;
   isHeading: boolean;
+  isListItem: boolean;
+  listNumberText?: string;
+  isTocParagraph: boolean;
+  isBibliographyEntry: boolean;
+  isBibliographyHeading: boolean;
+  headingConfidence: HeadingConfidence;
   headingLevel?: number;
   parsedHeading?: ParsedHeading;
   numbering?: ParagraphNumbering;
@@ -181,6 +189,7 @@ export interface BibliographyEntry {
   number?: number;
   text: string;
   paragraphIndex: number;
+  listNumberText?: string;
 }
 
 export interface DocumentMetadata {

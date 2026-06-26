@@ -22,7 +22,22 @@ function sectionNameMatches(normalized: string, names: string[]): boolean {
 }
 
 function allAcceptedSectionNames(profile: RuleProfile): string[] {
-  return Array.from(new Set([...profile.requiredSections, ...Object.values(profile.alternativeSectionNames).flat()].map(normalizeSectionTitle)));
+  return Array.from(
+    new Set(
+      [
+        "РЕФЕРАТ",
+        "АННОТАЦИЯ",
+        "СОДЕРЖАНИЕ",
+        "ОГЛАВЛЕНИЕ",
+        "ВВЕДЕНИЕ",
+        "ЗАКЛЮЧЕНИЕ",
+        "СПИСОК ИСТОЧНИКОВ",
+        "СПИСОК ИСПОЛЬЗОВАННЫХ ИСТОЧНИКОВ",
+        ...profile.requiredSections,
+        ...Object.values(profile.alternativeSectionNames).flat()
+      ].map(normalizeSectionTitle)
+    )
+  );
 }
 
 function tocParagraphIndexes(document: ParsedDocument, profile: RuleProfile): Set<number> {
@@ -32,6 +47,11 @@ function tocParagraphIndexes(document: ParsedDocument, profile: RuleProfile): Se
   for (const paragraph of document.paragraphs) {
     const text = paragraph.renderedText || paragraph.text;
     const normalized = normalizeSectionTitle(text);
+    if (paragraph.isTocParagraph) {
+      indexes.add(paragraph.index);
+      if (normalized === "СОДЕРЖАНИЕ" || normalized === "ОГЛАВЛЕНИЕ") inToc = true;
+      continue;
+    }
     if (normalized === "СОДЕРЖАНИЕ" || normalized === "ОГЛАВЛЕНИЕ" || /toc|оглавлен|содержан/iu.test(paragraph.styleName ?? "")) {
       inToc = true;
       indexes.add(paragraph.index);
@@ -49,6 +69,7 @@ function findSectionParagraph(document: ParsedDocument, names: string[], profile
   const toc = tocParagraphIndexes(document, profile);
   return document.paragraphs.find((paragraph) => {
     const normalized = normalizeSectionTitle(paragraph.renderedText || paragraph.text);
+    if (paragraph.isBibliographyEntry) return false;
     if (toc.has(paragraph.index) && normalized !== "СОДЕРЖАНИЕ" && normalized !== "ОГЛАВЛЕНИЕ") return false;
     return sectionNameMatches(normalized, names);
   });

@@ -49,6 +49,9 @@ function buildDebug(document: ParsedDocument, profile: RuleProfile): ReportDebug
   const knownSectionNames = new Set([...profile.requiredSections, ...Object.values(profile.alternativeSectionNames).flat()].map(normalizeSectionTitle));
   const sectionLikeParagraphs = document.paragraphs.filter((paragraph) => {
     const normalized = normalizeSectionTitle(paragraph.renderedText || paragraph.text);
+    if (paragraph.isBibliographyEntry) return false;
+    if (paragraph.isBibliographyHeading && !paragraph.isHeading) return false;
+    if (paragraph.isTocParagraph && normalized !== "СОДЕРЖАНИЕ" && normalized !== "ОГЛАВЛЕНИЕ") return false;
     return paragraph.isHeading || knownSectionNames.has(normalized);
   });
   const sectionDebugRows = sectionLikeParagraphs.map((paragraph) => {
@@ -61,9 +64,61 @@ function buildDebug(document: ParsedDocument, profile: RuleProfile): ReportDebug
       styleId: paragraph.styleId,
       styleName: paragraph.styleName,
       source: (knownSectionNames.has(normalized) ? "profile-alias" : styleSource ?? "text") as "style" | "text" | "profile-alias",
-      isInToc: paragraph.role === "toc" || /\.{2,}|…|\s+\d+\s*$/u.test(paragraph.renderedText || paragraph.text)
+      isInToc: paragraph.isTocParagraph || paragraph.role === "toc",
+      headingConfidence: paragraph.headingConfidence
     };
   });
+  const detectedTocEntries = document.paragraphs
+    .filter((paragraph) => paragraph.isTocParagraph && !["СОДЕРЖАНИЕ", "ОГЛАВЛЕНИЕ"].includes(normalizeSectionTitle(paragraph.renderedText || paragraph.text)))
+    .map((paragraph) => ({
+      rawText: paragraph.renderedText || paragraph.text,
+      normalizedText: normalizeSectionTitle(paragraph.renderedText || paragraph.text),
+      paragraphIndex: paragraph.index,
+      styleId: paragraph.styleId,
+      styleName: paragraph.styleName,
+      pageNumber: /\s+(\d+)\s*$/u.exec(paragraph.renderedText || paragraph.text)?.[1]
+    }));
+  const bibliographyHeadingCounts = new Map<string, number>();
+  const detectedBibliographyHeadings = document.paragraphs
+    .filter((paragraph) => paragraph.isBibliographyHeading)
+    .map((paragraph) => {
+      const normalizedText = normalizeSectionTitle(paragraph.renderedText || paragraph.text);
+      const previousCount = bibliographyHeadingCounts.get(normalizedText) ?? 0;
+      bibliographyHeadingCounts.set(normalizedText, previousCount + 1);
+      return {
+        rawText: paragraph.renderedText || paragraph.text,
+        normalizedText,
+        paragraphIndex: paragraph.index,
+        duplicated: previousCount > 0 || /(.+)\s+\1/iu.test(normalizedText)
+      };
+    });
+  const detectedBibliographyEntries = document.bibliography.map((entry) => ({
+    number: entry.number,
+    paragraphIndex: entry.paragraphIndex,
+    rawText: entry.text,
+    listNumberText: entry.listNumberText
+  }));
+  const pageLayoutDebug: NonNullable<ReportDebug["pageLayoutDebug"]> = {
+    activeProfileId: profile.id,
+    activeProfileName: profile.name,
+    expectedMarginsMm: {
+      left: profile.pageLayout.leftMarginMm,
+      right: profile.pageLayout.rightMarginMm,
+      top: profile.pageLayout.topMarginMm,
+      bottom: profile.pageLayout.bottomMarginMm
+    },
+    actualMarginsMm: document.sectionLayouts.map((layout, index) => ({
+      sectionIndex: index,
+      left: layout.margins?.leftMm,
+      right: layout.margins?.rightMm,
+      top: layout.margins?.topMm,
+      bottom: layout.margins?.bottomMm,
+      orientation: layout.orientation,
+      pageSize: layout.pageSize
+    })),
+    toleranceMm: profile.pageLayout.marginToleranceMm ?? 0.5,
+    source: profile.originalProfileId ? "edited-profile" : profile.lockedDefault ? "default" : "profile"
+  };
   const detectedCaptions = document.objects
     ? document.objects.map((object) => ({
         type: object.type,
@@ -86,13 +141,18 @@ function buildDebug(document: ParsedDocument, profile: RuleProfile): ReportDebug
   return {
     activeProfileId: profile.id,
     activeWorkType: profile.activeWorkType ?? profile.defaultWorkType ?? "generic",
+    pageLayoutDebug,
     detectedSections: sectionDebugRows,
+    detectedTocEntries,
+    detectedBibliographyHeadings,
+    detectedBibliographyEntries,
     detectedHeadings: document.headings.map((heading) => ({
       rawText: heading.renderedText || heading.text,
       normalizedText: normalizeSectionTitle(heading.renderedText || heading.text),
       paragraphIndex: heading.index,
       styleId: heading.styleId,
-      styleName: heading.styleName
+      styleName: heading.styleName,
+      headingConfidence: heading.headingConfidence
     })),
     detectedCaptions,
     detectedTables: document.tables.map((table) => ({
@@ -115,7 +175,8 @@ function buildDebug(document: ParsedDocument, profile: RuleProfile): ReportDebug
     detectedBibliography: document.bibliography.map((entry) => ({
       number: entry.number,
       paragraphIndex: entry.paragraphIndex,
-      rawText: entry.text
+      rawText: entry.text,
+      listNumberText: entry.listNumberText
     })),
     detectedAppendices: document.headings
       .filter((heading) => /^ПРИЛОЖЕНИ[ЕЯ](?:\s+[А-ЯA-Z0-9])?/iu.test(heading.renderedText || heading.text))
@@ -180,6 +241,19 @@ function visualLayerResultCheck(document: ParsedDocument, profile: RuleProfile, 
   }
   if (visualLayer.mode === "textOnly") {
     const docxWithoutPreview = visualLayer.label.includes("DOCX без точного превью");
+    if (docxWithoutPreview) {
+      return {
+        execution: makeExecution(
+          "VISUAL_LAYER",
+          "Построение визуального слоя",
+          "visual",
+          issues,
+          "partial",
+          "Визуальный слой: DOCX без точного превью. Для точной постраничной проверки загрузите PDF, экспортированный из этого же DOCX."
+        ),
+        issues
+      };
+    }
     issues.push(
       createIssue(
         {
@@ -224,7 +298,7 @@ export function runChecks(input: CheckEngineInput): CheckReport {
   const { document, profile, visualLayer } = input;
   const results = [
     ...runStructureChecks(document, profile),
-    ...runHeadingChecks(document, profile),
+    ...runHeadingChecks(document, profile, { inputMode: input.inputMode ?? (input.optionalPdfFileName ? "docxWithPdf" : "docxOnly") }),
     ...runPageLayoutChecks(document, profile),
     ...runTypographyChecks(document, profile),
     ...runFormattingChecks(document, profile),

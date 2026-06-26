@@ -37,6 +37,12 @@ function isTechnicalDiagnosticIssue(code: string): boolean {
   return normalizedCode.includes("DEBUG") || normalizedCode.includes("DIAGNOSTIC") || normalizedCode.includes("PARSER_TRACE");
 }
 
+const pageLayoutSourceLabels = {
+  default: "встроенный профиль",
+  profile: "активный профиль",
+  "edited-profile": "изменённая копия профиля"
+};
+
 export function ReportPage({ result, onNavigate }: ReportPageProps) {
   const { report, document, visualLayer } = result;
   const [filters, setFilters] = useState<IssueFilterState>(initialFilters);
@@ -128,6 +134,37 @@ export function ReportPage({ result, onNavigate }: ReportPageProps) {
       </section>
 
       <CheckSummary report={report} />
+
+      {report.debug?.pageLayoutDebug && (
+        <section className="tool-panel">
+          <h2>Ожидаемые параметры страницы по активному профилю</h2>
+          <div className="metrics-grid">
+            <div className="metric">
+              <span>Левое поле</span>
+              <strong>{report.debug.pageLayoutDebug.expectedMarginsMm.left} мм</strong>
+            </div>
+            <div className="metric">
+              <span>Правое поле</span>
+              <strong>{report.debug.pageLayoutDebug.expectedMarginsMm.right} мм</strong>
+            </div>
+            <div className="metric">
+              <span>Верхнее поле</span>
+              <strong>{report.debug.pageLayoutDebug.expectedMarginsMm.top} мм</strong>
+            </div>
+            <div className="metric">
+              <span>Нижнее поле</span>
+              <strong>{report.debug.pageLayoutDebug.expectedMarginsMm.bottom} мм</strong>
+            </div>
+            <div className="metric">
+              <span>Допуск</span>
+              <strong>{report.debug.pageLayoutDebug.toleranceMm} мм</strong>
+            </div>
+          </div>
+          <p className="muted" style={{ marginBottom: 0 }}>
+            Профиль: {report.debug.pageLayoutDebug.activeProfileName} · источник: {pageLayoutSourceLabels[report.debug.pageLayoutDebug.source]}
+          </p>
+        </section>
+      )}
 
       <section className="tool-panel">
         <h2>Краткое резюме</h2>
@@ -226,6 +263,49 @@ export function ReportPage({ result, onNavigate }: ReportPageProps) {
                 ))}
               </div>
             </div>
+            {report.debug.detectedTocEntries && report.debug.detectedTocEntries.length > 0 && (
+              <div>
+                <h3>Строки оглавления</h3>
+                <div className="debug-list">
+                  {report.debug.detectedTocEntries.map((entry) => (
+                    <div className="debug-row" key={`${entry.paragraphIndex}-${entry.rawText}`}>
+                      <strong>{entry.normalizedText}</strong>
+                      <span>Абзац {entry.paragraphIndex + 1}{entry.pageNumber ? ` · стр. ${entry.pageNumber}` : ""}</span>
+                      <p>{entry.rawText}</p>
+                      {(entry.styleName || entry.styleId) && <small>{[entry.styleName, entry.styleId].filter(Boolean).join(" · ")}</small>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {report.debug.detectedBibliographyHeadings && report.debug.detectedBibliographyHeadings.length > 0 && (
+              <div>
+                <h3>Заголовки библиографии</h3>
+                <div className="debug-list">
+                  {report.debug.detectedBibliographyHeadings.map((heading) => (
+                    <div className="debug-row" key={`${heading.paragraphIndex}-${heading.rawText}`}>
+                      <strong>{heading.normalizedText}</strong>
+                      <span>Абзац {heading.paragraphIndex + 1}{heading.duplicated ? " · дублированный заголовок" : ""}</span>
+                      <p>{heading.rawText}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {report.debug.detectedBibliographyEntries && report.debug.detectedBibliographyEntries.length > 0 && (
+              <div>
+                <h3>Записи библиографии</h3>
+                <div className="debug-list">
+                  {report.debug.detectedBibliographyEntries.map((entry, index) => (
+                    <div className="debug-row" key={`${entry.paragraphIndex}-${index}`}>
+                      <strong>{entry.number ? `Источник ${entry.number}` : "Источник без номера"}</strong>
+                      <span>Абзац {entry.paragraphIndex + 1}{entry.listNumberText ? ` · номер списка: ${entry.listNumberText}` : ""}</span>
+                      <p>{entry.rawText}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <div>
               <h3>Подписи</h3>
               <div className="debug-list">

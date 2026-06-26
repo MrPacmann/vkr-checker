@@ -1,4 +1,5 @@
 import type { ParsedDocument } from "../../types/document";
+import type { InputMode } from "../../types/report";
 import type { RuleProfile } from "../../types/settings";
 import { createIssue, makeExecution, type RuleCheckResult } from "./ruleRunner";
 
@@ -15,8 +16,24 @@ function startsOnNewPage(heading: ParsedDocument["headings"][number], document: 
   return Boolean(heading.hasPageBreakBefore || heading.hasManualPageBreak || previous?.hasManualPageBreak || previous?.hasSectionBreak);
 }
 
-export function runHeadingChecks(document: ParsedDocument, profile: RuleProfile): RuleCheckResult[] {
+function isTocTitle(heading: ParsedDocument["headings"][number]): boolean {
+  return /^(СОДЕРЖАНИЕ|ОГЛАВЛЕНИЕ)$/iu.test(headingText(heading));
+}
+
+function isReliableHeading(heading: ParsedDocument["headings"][number]): boolean {
+  if (heading.isBibliographyEntry) return false;
+  if (heading.isTocParagraph && !isTocTitle(heading)) return false;
+  if (heading.role && ["toc", "bibliographyEntry", "figureCaption", "tableCaption", "listingCaption", "formula", "tableCellText", "technical"].includes(heading.role)) return false;
+  return heading.headingConfidence !== "none";
+}
+
+interface HeadingCheckOptions {
+  inputMode?: InputMode;
+}
+
+export function runHeadingChecks(document: ParsedDocument, profile: RuleProfile, options: HeadingCheckOptions = {}): RuleCheckResult[] {
   const issues = [];
+  const reliableHeadings = document.headings.filter(isReliableHeading);
 
   if (profile.enabledChecks.headingNumbering) {
     if (document.headingNumbering && document.headingNumbering.reliability !== "high") {
@@ -39,7 +56,7 @@ export function runHeadingChecks(document: ParsedDocument, profile: RuleProfile)
         )
       );
     }
-    const numbered = document.headings.filter((heading) => /^\d+(?:\.\d+)*\.?\s+/u.test(headingText(heading)));
+    const numbered = reliableHeadings.filter((heading) => /^\d+(?:\.\d+)*\.?\s+/u.test(headingText(heading)));
     const numberTrailingDotHeadings = numbered.filter((heading) => /^\d+(?:\.\d+)*\.\s+/u.test(headingText(heading)));
     if (numberTrailingDotHeadings.length > 0) {
       const first = numberTrailingDotHeadings[0];
@@ -93,7 +110,7 @@ export function runHeadingChecks(document: ParsedDocument, profile: RuleProfile)
   }
 
   if (profile.forbidHeadingTrailingDot) {
-    const trailingPunctuation = document.headings.filter((heading) => /[.:;]\s*$/u.test(headingText(heading)));
+    const trailingPunctuation = reliableHeadings.filter((heading) => /[.:;]\s*$/u.test(headingText(heading)));
     if (trailingPunctuation.length > 0) {
       const first = trailingPunctuation[0];
       issues.push(
@@ -123,7 +140,16 @@ export function runHeadingChecks(document: ParsedDocument, profile: RuleProfile)
   }
 
   if (profile.headingTopLevelStartsPage) {
-    for (const heading of document.headings.filter((item) => item.headingLevel === 1 && !/^(РЕФЕРАТ|АННОТАЦИЯ|СОДЕРЖАНИЕ|ОГЛАВЛЕНИЕ)$/iu.test(headingText(item)))) {
+    const canVerifyPageStart = options.inputMode !== "docxOnly";
+    const topHeadings = reliableHeadings.filter(
+      (item) =>
+        item.headingLevel === 1 &&
+        item.headingConfidence === "high" &&
+        !(item.isListItem && !item.resolvedStyle?.isHeading) &&
+        !/^(РЕФЕРАТ|АННОТАЦИЯ|СОДЕРЖАНИЕ|ОГЛАВЛЕНИЕ)$/iu.test(headingText(item))
+    );
+    for (const heading of topHeadings) {
+      if (!canVerifyPageStart) continue;
       if (!startsOnNewPage(heading, document)) {
         issues.push(
           createIssue(
@@ -147,14 +173,14 @@ export function runHeadingChecks(document: ParsedDocument, profile: RuleProfile)
 
   if (profile.forbidSingleSubsection && (!document.headingNumbering || document.headingNumbering.reliability === "high")) {
     const childrenByParent = new Map<string, number>();
-    for (const heading of document.headings) {
+    for (const heading of reliableHeadings) {
       const number = headingNumber(heading);
       const match = /^(\d+)\.(\d+)$/u.exec(number ?? "");
       if (match) childrenByParent.set(match[1], (childrenByParent.get(match[1]) ?? 0) + 1);
     }
     for (const [parent, count] of childrenByParent) {
       if (count === 1) {
-        const child = document.headings.find((heading) => headingNumber(heading)?.startsWith(`${parent}.`));
+        const child = reliableHeadings.find((heading) => headingNumber(heading)?.startsWith(`${parent}.`));
         if (child) {
           issues.push(
             createIssue(
@@ -176,10 +202,11 @@ export function runHeadingChecks(document: ParsedDocument, profile: RuleProfile)
     }
   }
 
-  const headingsWithoutText = document.headings
+  const reliableHeadingIndexes = new Set(reliableHeadings.map((heading) => heading.index));
+  const headingsWithoutText = reliableHeadings
     .filter((heading) => {
       const next = document.paragraphs[heading.index + 1];
-      return next?.isHeading;
+      return next?.isHeading && reliableHeadingIndexes.has(next.index);
     });
   const noTextAfterHeading =
     headingsWithoutText.length > 1
